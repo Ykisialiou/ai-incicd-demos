@@ -47,7 +47,7 @@ A CI/CD pipeline step just failed with exit code $BUILD_EXIT_CODE. Analyze this 
 Input Build Log:
 $(cat "$LOG_FILE")"
 
-agy --model "Gemini 3.7 Flash (Low)" -p "$FINAL_PROMPT" --dangerously-skip-permissions
+agy --model "Gemini 3.5 Flash (Low)" -p "$FINAL_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "================================================================================"

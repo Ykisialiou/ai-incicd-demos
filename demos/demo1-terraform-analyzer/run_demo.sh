@@ -67,7 +67,7 @@ Generate an executive Change Management / CAB approval email based on this Terra
 Input Plan JSON:
 $(cat "$PLAN_JSON")"
 
-agy --model "Gemini 3.7 Flash (Low)" -p "$CAB_PROMPT" --dangerously-skip-permissions
+agy --model "Gemini 3.5 Flash (Low)" -p "$CAB_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "================================================================================"

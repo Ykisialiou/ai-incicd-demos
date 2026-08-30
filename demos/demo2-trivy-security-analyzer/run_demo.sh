@@ -42,7 +42,7 @@ Triage this raw Trivy security scan. Filter noise, identify root-cause fixes (li
 Input Trivy Scan JSON:
 $(cat "$SCAN_JSON")"
 
-agy --model "Gemini 3.7 Flash (Low)" -p "$FINAL_PROMPT" --dangerously-skip-permissions
+agy --model "Gemini 3.5 Flash (Low)" -p "$FINAL_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "================================================================================"
