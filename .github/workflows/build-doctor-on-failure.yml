@@ -53,20 +53,14 @@ jobs:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
+          set -o pipefail
           echo "================================================================================"
           echo " 🩺 Invoking Antigravity Build Doctor on live broken build log"
           echo "================================================================================"
 
-          PROMPT="System Instructions:
-          $(cat agent_instructions/build_doctor_agent/system_prompt.md)
+          PROMPT="A CI/CD pipeline step just failed with exit code 1. Analyze this raw build log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer."
 
-          Task:
-          A CI/CD pipeline step just failed with exit code 1. Analyze this raw log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer.
-
-          Input Build Log:
-          $(cat build_output.log)"
-
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions | tee build_diagnosis.md
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" build_output.log --dangerously-skip-permissions | tee build_diagnosis.md
 
           echo "# Demo 3: CI Build Doctor Diagnosis Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

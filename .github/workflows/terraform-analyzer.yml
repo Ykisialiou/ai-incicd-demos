@@ -53,20 +53,14 @@ jobs:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
+          set -o pipefail
           echo "================================================================================"
           echo " 🤖 Invoking Antigravity SRE Agent on live plan.json"
           echo "================================================================================"
           
-          PROMPT="System Instructions:
-          $(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
+          PROMPT="Perform a comprehensive SRE and Security review of this Terraform plan JSON. Evaluate destructive replacements, blast radius score (0-10), security group ingress risks, and provide a clear State Gate Verdict and HCL remediation patch."
 
-          Task:
-          Perform full SRE and security analysis on this Terraform plan. Evaluate destructive replacements, security group ingress, blast radius score, and state gate decision.
-
-          Input Plan JSON:
-          $(cat demos/demo1-terraform-analyzer/terraform/plan.json)"
-
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions | tee terraform_review.md
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" demos/demo1-terraform-analyzer/terraform/plan.json --dangerously-skip-permissions | tee terraform_review.md
           
           echo "# Demo 1: Terraform Plan SRE Safety Review" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
