@@ -115,13 +115,31 @@ $input_payload
 PROMPT_EOF
 )"
 
-  if command -v agy &>/dev/null; then
-    # Official Google Antigravity CLI binary
-    agy -p "$combined_prompt" --dangerously-skip-permissions 2>/dev/null || agy -p "$combined_prompt"
-  else
-    # Fallback to local runner if agy binary not in PATH
-    echo "$input_payload" | "$PROJECT_ROOT/bin/agy" --system-prompt "$system_prompt_file" --prompt "$task_prompt"
+  # Configure agy settings for API key authentication
+  local api_key="${GEMINI_API_KEY:-${AGY_API_KEY:-}}"
+  if [ -n "$api_key" ]; then
+    export GEMINI_API_KEY="$api_key"
+    export AGY_API_KEY="$api_key"
+    mkdir -p "$HOME/.gemini/antigravity-cli" "$HOME/.antigravity" 2>/dev/null || true
+    echo '{"modelProvider":"gemini"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true
+    echo '{"modelProvider":"gemini"}' > "$HOME/.antigravity/settings.json" 2>/dev/null || true
   fi
+
+  local output=""
+  if command -v agy &>/dev/null; then
+    output=$(agy -p "$combined_prompt" --dangerously-skip-permissions 2>&1 || true)
+    # Check if agy failed due to auth or timeout
+    if echo "$output" | grep -qiE "authentication required|authentication failed|command not found|flag provided but not defined"; then
+      output=""
+    fi
+  fi
+
+  # Fallback to repo runner if agy binary not present or failed authentication
+  if [ -z "$output" ]; then
+    output=$(echo "$input_payload" | "$PROJECT_ROOT/bin/agy" --system-prompt "$system_prompt_file" --prompt "$task_prompt")
+  fi
+
+  echo "$output"
 }
 
 SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/system_prompt.md"

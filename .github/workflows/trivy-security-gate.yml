@@ -37,10 +37,17 @@ jobs:
           format: 'json'
           output: 'trivy_report.json'
 
+      - name: Configure Antigravity CLI
+        run: |
+          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
+          echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
+          echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
+
       - name: Run Trivy Security AI Agent (agy)
         id: security_agent
         env:
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
           SCAN_FILE="trivy_report.json"
           # If raw filesystem scan is empty (no built image in runner), use comprehensive demo scan report
