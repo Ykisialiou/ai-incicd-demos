@@ -24,6 +24,10 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch || github.ref }}
 
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
       - name: Install Antigravity CLI (agy)
         run: |
           curl -fsSL https://antigravity.google/cli/install.sh | bash
@@ -35,8 +39,7 @@ jobs:
           echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
-      - name: Run Demo 2 - Trivy Security Triage Agent (agy)
-        id: security_agent
+      - name: Run Demo 2 - Live Trivy Scan & Triage
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -45,7 +48,7 @@ jobs:
           chmod +x demos/demo2-trivy-security-analyzer/run_demo.sh
           ./demos/demo2-trivy-security-analyzer/run_demo.sh | tee security_triage.md
 
-          # Append to GitHub Step Summary
+          # Append real agent output to GitHub Step Summary
           cat security_triage.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Security Triage Comment
@@ -54,10 +57,12 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const reviewBody = fs.readFileSync('security_triage.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: reviewBody
-            });
+            if (fs.existsSync('security_triage.md')) {
+              const reviewBody = fs.readFileSync('security_triage.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: reviewBody
+              });
+            }

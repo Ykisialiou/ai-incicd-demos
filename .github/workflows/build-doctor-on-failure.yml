@@ -16,7 +16,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  build-and-test:
+  build-and-diagnose:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -35,8 +35,7 @@ jobs:
           echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
-      - name: Run Demo 3 - Build Doctor Failure Analyzer (agy)
-        id: run_build_doctor
+      - name: Run Demo 3 - Live Broken Build & Auto-Diagnosis
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -54,10 +53,12 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const diagnosis = fs.readFileSync('build_diagnosis.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: diagnosis
-            });
+            if (fs.existsSync('build_diagnosis.md')) {
+              const diagnosis = fs.readFileSync('build_diagnosis.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: diagnosis
+              });
+            }

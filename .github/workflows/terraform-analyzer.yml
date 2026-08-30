@@ -38,19 +38,16 @@ jobs:
           echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
-      - name: Run Demo 1 - Terraform Analyzer Agent (agy)
-        id: agent_analysis
+      - name: Run Demo 1 - Live Terraform Analysis
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID || vars.NOTION_PAGE_ID || '3ccf0d2a78318057b0ebfcff2b19caf8' }}
         run: |
           chmod +x demos/demo1-terraform-analyzer/run_demo.sh
           ./demos/demo1-terraform-analyzer/run_demo.sh | tee terraform_review.md
           
-          # Append to GitHub Step Summary
+          # Append real agent output to GitHub Step Summary
           cat terraform_review.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Safety Review Comment
@@ -59,10 +56,12 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const reviewBody = fs.readFileSync('terraform_review.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: reviewBody
-            });
+            if (fs.existsSync('terraform_review.md')) {
+              const reviewBody = fs.readFileSync('terraform_review.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: reviewBody
+              });
+            }

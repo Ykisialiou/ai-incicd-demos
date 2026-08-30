@@ -29,6 +29,9 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch || github.ref }}
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Install Antigravity CLI (agy)
         run: |
           curl -fsSL https://antigravity.google/cli/install.sh | bash
@@ -41,7 +44,6 @@ jobs:
           echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
       - name: Run AI Verifier Gate (LLM-as-a-Judge)
-        id: run_verifier
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -57,8 +59,6 @@ jobs:
           fi
 
           echo "Running Verifier in mode: $MODE_ARG"
-          
-          # Run the demo script and capture output
           chmod +x ./demos/demo4-ai-verifier-gate/run_demo.sh
           ./demos/demo4-ai-verifier-gate/run_demo.sh "$MODE_ARG" | tee verifier_output.log
 
