@@ -29,8 +29,8 @@ export GOOGLE_API_KEY="${GOOGLE_API_KEY:-${GEMINI_API_KEY:-}}"
 
 # Configure agy settings
 mkdir -p "$HOME/.gemini/antigravity-cli" "$HOME/.antigravity" 2>/dev/null || true
-echo '{"modelProvider":"gemini"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true
-echo '{"modelProvider":"gemini"}' > "$HOME/.antigravity/settings.json" 2>/dev/null || true
+echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true
+echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > "$HOME/.antigravity/settings.json" 2>/dev/null || true
 
 echo ""
 echo "Step 2: Invoking Official Antigravity AI Agent (agy) with live plan.json..."
