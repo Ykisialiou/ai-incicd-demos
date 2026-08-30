@@ -1,10 +1,14 @@
 name: Demo 1 - Terraform SRE Safety Gate
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'demos/demo1-terraform-analyzer/**'
   pull_request:
     paths:
       - 'demos/demo1-terraform-analyzer/**'
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: read

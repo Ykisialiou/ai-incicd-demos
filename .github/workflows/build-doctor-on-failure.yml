@@ -1,10 +1,14 @@
 name: Demo 3 - CI Build Doctor (Failure Auto-Diagnosis)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'demos/demo3-build-failure-doctor/**'
   pull_request:
     paths:
       - 'demos/demo3-build-failure-doctor/**'
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: read
