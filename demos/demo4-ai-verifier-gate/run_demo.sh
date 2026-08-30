@@ -57,7 +57,7 @@ $payload"
 
   echo "🤖 Invoking Official Antigravity Verifier Agent (LLM-as-a-Judge)..."
   local result_json
-  result_json=$(agy --model gemini-2.5-flash -p "$verifier_prompt" --dangerously-skip-permissions 2>&1 || true)
+  result_json=$(agy --model "Gemini 3.7 Flash (Low)" -p "$verifier_prompt" --dangerously-skip-permissions 2>&1 || true)
 
   echo ""
   echo "📊 Audit Evaluation Result:"

@@ -43,7 +43,7 @@ A CI/CD pipeline step just failed with exit code 1. Analyze this raw log, filter
 Input Build Log:
 $(cat "$LOG_FILE")"
 
-agy --model gemini-2.5-flash -p "$FINAL_PROMPT" --dangerously-skip-permissions
+agy --model "Gemini 3.7 Flash (Low)" -p "$FINAL_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "================================================================================"
