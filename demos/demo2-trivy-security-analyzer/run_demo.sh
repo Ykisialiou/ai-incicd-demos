@@ -115,7 +115,7 @@ Triage this raw Trivy security scan. Filter noise, identify root-cause fixes (li
 Input Trivy Scan JSON:
 $(cat "$SCAN_JSON")"
 
-agy -p "$FINAL_PROMPT" --dangerously-skip-permissions
+agy --model gemini-2.5-flash -p "$FINAL_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "================================================================================"

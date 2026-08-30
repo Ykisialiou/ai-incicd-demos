@@ -113,7 +113,7 @@ Perform full SRE and security analysis on this Terraform plan. Evaluate destruct
 Input Plan JSON:
 $(cat "$PLAN_JSON")"
 
-agy -p "$ANALYSIS_PROMPT" --dangerously-skip-permissions
+agy --model gemini-2.5-flash -p "$ANALYSIS_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "Step 3: Generating Automated CAB / Change Management Release Notification Email..."
@@ -130,7 +130,7 @@ Generate an executive Change Management / CAB approval email based on this Terra
 Input Plan JSON:
 $(cat "$PLAN_JSON")"
 
-agy -p "$CAB_PROMPT" --dangerously-skip-permissions
+agy --model gemini-2.5-flash -p "$CAB_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "Step 4: Publishing Confluence / Notion RFC (Request for Change) Page..."
