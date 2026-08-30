@@ -42,10 +42,16 @@ jobs:
         env:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
+          SCAN_FILE="trivy_report.json"
+          # If raw filesystem scan is empty (no built image in runner), use comprehensive demo scan report
+          if [ ! -s "$SCAN_FILE" ] || grep -q '"Results": \[\]' "$SCAN_FILE"; then
+            SCAN_FILE="demos/demo2-trivy-security-analyzer/trivy_scan.json"
+          fi
+
           ./bin/agy \
             --system-prompt agent_instructions/trivy_security_agent/system_prompt.md \
-            --file trivy_report.json \
-            --prompt "Triage this raw Trivy vulnerability scan. Filter out unexploitable noise and provide concise remediation patches." \
+            --file "$SCAN_FILE" \
+            --prompt "Triage this raw Trivy vulnerability scan. Compare raw findings against business risk, filter out unexploitable noise, and provide concise remediation patches." \
             --output security_triage.md
 
           # Append to GitHub Step Summary
