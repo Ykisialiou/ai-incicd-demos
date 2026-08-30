@@ -70,6 +70,12 @@ $(cat "$PLAN_JSON")"
 agy --model "Gemini 3.5 Flash (Low)" -p "$CAB_PROMPT" --dangerously-skip-permissions
 
 echo ""
+echo "Step 4: Publishing Live Change Management RFC to Notion..."
+echo "--------------------------------------------------------------------------------"
+
+python3 "$SCRIPT_DIR/publish_notion_rfc.py" --input "$SCRIPT_DIR/change_requests/RFC-20260831-01-customer-db.md"
+
+echo ""
 echo "================================================================================"
-echo " ✅ Demo 1 complete! Live plan evaluated by Antigravity AI agent."
+echo " ✅ Demo 1 complete! Live plan evaluated & RFC published to Notion."
 echo "================================================================================"

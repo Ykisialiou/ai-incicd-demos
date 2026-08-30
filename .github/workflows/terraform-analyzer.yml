@@ -70,6 +70,17 @@ $PLAN_CONTENT"
           echo "" >> $GITHUB_STEP_SUMMARY
           cat terraform_review.md >> $GITHUB_STEP_SUMMARY
 
+      - name: Generate & Publish Live Change Management RFC to Notion
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID || vars.NOTION_PAGE_ID || 'Change-management-3ccf0d2a78318057b0ebfcff2b19caf8' }}
+        run: |
+          echo "================================================================================"
+          echo " 📑 Publishing Live Change Management RFC to Notion"
+          echo "================================================================================"
+          python3 demos/demo1-terraform-analyzer/publish_notion_rfc.py \
+            --input demos/demo1-terraform-analyzer/change_requests/RFC-20260831-01-customer-db.md
+
       - name: Post PR Safety Review Comment
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
