@@ -49,7 +49,7 @@ ai-incicd-demos/
     ├── terraform-analyzer.yml                      # Pre-apply Terraform AI safety gate
     ├── trivy-security-gate.yml                     # DevSecOps vulnerability triage & patch generator
     ├── build-doctor-on-failure.yml                 # Auto-diagnosis on step failure
-    └── ai-verifier-gate.yml                        # Two-pass AI hallucination & fact-checking gate
+    └── demo4-ai-verifier-gate.yml                  # Two-pass AI hallucination & fact-checking gate
 ```
 
 ---
