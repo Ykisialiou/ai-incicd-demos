@@ -57,6 +57,8 @@ jobs:
           fi
 
           echo "Running Verifier in mode: $MODE_ARG"
+          agy -v || true
+          agy --help || true
           
           # Run the demo script and capture output
           chmod +x ./demos/demo4-ai-verifier-gate/run_demo.sh
