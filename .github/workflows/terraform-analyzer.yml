@@ -58,12 +58,13 @@ jobs:
           echo " 🤖 Invoking Antigravity SRE Agent on live plan.json"
           echo "================================================================================"
           
-          (
-            echo "Perform a comprehensive SRE and Security review of the following Terraform plan JSON. Evaluate destructive replacements, blast radius score (0-10), security group ingress risks, and provide a clear State Gate Verdict and HCL remediation patch."
-            echo ""
-            echo "=== [INPUT TERRAFORM PLAN JSON] ==="
-            cat demos/demo1-terraform-analyzer/terraform/plan.json
-          ) | agy --model "Gemini 3.5 Flash (Low)" --dangerously-skip-permissions | tee terraform_review.md
+          PLAN_CONTENT=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+          PROMPT="Perform a comprehensive SRE and Security review of the following Terraform plan JSON. Evaluate destructive replacements, blast radius score (0-10), security group ingress risks, and provide a clear State Gate Verdict and HCL remediation patch.
+
+=== [INPUT TERRAFORM PLAN JSON] ===
+$PLAN_CONTENT"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions < /dev/null | tee terraform_review.md
           
           echo "# Demo 1: Terraform Plan SRE Safety Review" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
