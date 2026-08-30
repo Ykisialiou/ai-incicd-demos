@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'demos/demo3-build-failure-doctor/**'
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
   contents: read
