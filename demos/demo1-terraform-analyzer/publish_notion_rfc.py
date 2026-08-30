@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-publish_notion_rfc.py - Converts and publishes RFC Change Management records to Notion API.
+publish_notion_rfc.py - Converts Markdown RFCs into Beautiful Native Notion Blocks & Pages.
 
-Usage:
-    python3 publish_notion_rfc.py --input change_requests/RFC-20260831-01-customer-db.md
+Features:
+- Real Notion native Tables with headers and formatted cells
+- Colored Callout Boxes for Critical Risk & SRE Warnings
+- Rich Text formatting (Bold, Code, Links)
+- Interactive To-Do Checklist blocks
+- Native Code blocks with syntax highlighting
 """
 
 import os
@@ -19,126 +23,245 @@ def clean_page_id(raw_id: str) -> str:
     if not raw_id:
         return ""
     cleaned = raw_id.strip().split("?")[0].split("/")[-1]
-    # Check for 32 hex characters at the end of the slug
     match = re.search(r'([a-fA-F0-9]{32})$', cleaned)
     if match:
         return match.group(1)
-    # Check for standard UUID format
     match_uuid = re.search(r'([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})', cleaned)
     if match_uuid:
         return match_uuid.group(1)
     return cleaned
 
+def text_to_rich_text(text: str) -> list:
+    """Parses markdown bold, code, and links into Notion rich_text array."""
+    if not text:
+        return [{"type": "text", "text": {"content": ""}}]
+
+    pattern = re.compile(r'(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\))')
+    parts = pattern.split(text)
+    rich_text = []
+    
+    for part in parts:
+        if not part:
+            continue
+        if part.startswith("**") and part.endswith("**") and len(part) >= 4:
+            rich_text.append({
+                "type": "text",
+                "text": {"content": part[2:-2]},
+                "annotations": {"bold": True}
+            })
+        elif part.startswith("`") and part.endswith("`") and len(part) >= 2:
+            rich_text.append({
+                "type": "text",
+                "text": {"content": part[1:-1]},
+                "annotations": {"code": True}
+            })
+        elif part.startswith("[") and "](" in part and part.endswith(")"):
+            try:
+                link_text = part[1:part.index("](")]
+                link_url = part[part.index("](") + 2:-1]
+                rich_text.append({
+                    "type": "text",
+                    "text": {"content": link_text, "link": {"url": link_url}}
+                })
+            except Exception:
+                rich_text.append({"type": "text", "text": {"content": part}})
+        else:
+            rich_text.append({
+                "type": "text",
+                "text": {"content": part}
+            })
+            
+    return rich_text if rich_text else [{"type": "text", "text": {"content": text}}]
+
 def parse_markdown_to_notion_blocks(markdown_content: str) -> list:
-    """Converts standard Markdown into Notion Block Objects."""
+    """Parses full markdown document into clean, beautiful Notion block tree."""
     blocks = []
     lines = markdown_content.splitlines()
-    in_code_block = False
-    code_lines = []
-    code_lang = "plain_text"
-
-    for line in lines:
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
 
-        # Handle Code blocks
-        if stripped.startswith("```"):
-            if in_code_block:
-                in_code_block = False
-                code_text = "\n".join(code_lines)[:2000]
-                blocks.append({
-                    "object": "block",
-                    "type": "code",
-                    "code": {
-                        "rich_text": [{"type": "text", "text": {"content": code_text}}],
-                        "language": code_lang if code_lang in ["bash", "javascript", "python", "json", "yaml", "html", "css", "dockerfile", "sql"] else "plain_text"
-                    }
-                })
-                code_lines = []
-            else:
-                in_code_block = True
-                lang = stripped[3:].strip().lower()
-                code_lang = lang if lang else "plain_text"
-            continue
-
-        if in_code_block:
-            code_lines.append(line)
-            continue
-
         if not stripped:
+            i += 1
+            continue
+
+        # Skip main # Title (handled in page properties)
+        if stripped.startswith("# "):
+            i += 1
             continue
 
         # Headings
-        if stripped.startswith("# "):
-            continue # Title handled in page properties
-        elif stripped.startswith("## "):
+        if stripped.startswith("## "):
             blocks.append({
                 "object": "block",
                 "type": "heading_2",
-                "heading_2": {"rich_text": [{"type": "text", "text": {"content": stripped[3:]}}]}
+                "heading_2": {
+                    "rich_text": text_to_rich_text(stripped[3:])
+                }
             })
+            i += 1
+            continue
         elif stripped.startswith("### "):
             blocks.append({
                 "object": "block",
                 "type": "heading_3",
-                "heading_3": {"rich_text": [{"type": "text", "text": {"content": stripped[4:]}}]}
+                "heading_3": {
+                    "rich_text": text_to_rich_text(stripped[4:])
+                }
             })
-        # Callouts / Alerts
-        elif stripped.startswith("> "):
-            callout_text = stripped[2:].replace("[!CAUTION]", "⚠️ CAUTION:").replace("[!WARNING]", "⚠️ WARNING:").replace("[!IMPORTANT]", "ℹ️ IMPORTANT:")
+            i += 1
+            continue
+
+        # Divider
+        if stripped in ["---", "***", "___"]:
+            blocks.append({
+                "object": "block",
+                "type": "divider",
+                "divider": {}
+            })
+            i += 1
+            continue
+
+        # Callouts (> Alert)
+        if stripped.startswith("> "):
+            callout_text = stripped[2:].replace("[!CAUTION]", "🛑 CRITICAL:").replace("[!WARNING]", "⚠️ WARNING:").replace("[!IMPORTANT]", "ℹ️ IMPORTANT:")
+            color = "red_background" if ("CRITICAL" in callout_text or "CAUTION" in callout_text or "DROP" in callout_text) else "yellow_background" if "WARNING" in callout_text else "blue_background"
+            emoji = "🛑" if "CRITICAL" in callout_text or "CAUTION" in callout_text else "⚠️" if "WARNING" in callout_text else "📋"
+            
             blocks.append({
                 "object": "block",
                 "type": "callout",
                 "callout": {
-                    "rich_text": [{"type": "text", "text": {"content": callout_text[:2000]}}],
-                    "icon": {"type": "emoji", "emoji": "🛑" if "CAUTION" in callout_text or "CRITICAL" in callout_text else "📋"}
+                    "rich_text": text_to_rich_text(callout_text),
+                    "icon": {"type": "emoji", "emoji": emoji},
+                    "color": color
                 }
             })
+            i += 1
+            continue
+
+        # Code block
+        if stripped.startswith("```"):
+            lang = stripped[3:].strip().lower()
+            code_lang = lang if lang in ["bash", "javascript", "python", "json", "yaml", "html", "css", "dockerfile", "sql"] else "plain_text"
+            code_lines = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                code_lines.append(lines[i])
+                i += 1
+            if i < len(lines):
+                i += 1 # skip closing ```
+            
+            blocks.append({
+                "object": "block",
+                "type": "code",
+                "code": {
+                    "rich_text": [{"type": "text", "text": {"content": "\n".join(code_lines)[:2000]}}],
+                    "language": code_lang
+                }
+            })
+            continue
+
+        # Tables (| Col 1 | Col 2 |)
+        if stripped.startswith("|"):
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                if not re.match(r'^[\|\s\-:]+$', lines[i].strip()):
+                    table_lines.append(lines[i].strip())
+                i += 1
+
+            if table_lines:
+                # Extract rows
+                rows_data = []
+                for tline in table_lines:
+                    cols = [c.strip() for c in tline.split("|")[1:-1]]
+                    rows_data.append(cols)
+
+                if rows_data:
+                    width = max(len(r) for r in rows_data)
+                    table_children = []
+                    for row_idx, row in enumerate(rows_data):
+                        # Pad row if needed
+                        padded = row + [""] * (width - len(row))
+                        cells = []
+                        for cell_text in padded:
+                            cell_rt = text_to_rich_text(cell_text)
+                            if row_idx == 0:
+                                for item in cell_rt:
+                                    item.setdefault("annotations", {})["bold"] = True
+                            cells.append(cell_rt)
+                            
+                        table_children.append({
+                            "type": "table_row",
+                            "table_row": {"cells": cells}
+                        })
+
+                    blocks.append({
+                        "object": "block",
+                        "type": "table",
+                        "table": {
+                            "table_width": width,
+                            "has_column_header": True,
+                            "has_row_header": False,
+                            "children": table_children
+                        }
+                    })
+            continue
+
         # Checkbox / To-Do
-        elif stripped.startswith("- [ ] ") or stripped.startswith("- [x] "):
+        if stripped.startswith("- [ ] ") or stripped.startswith("- [x] "):
             checked = stripped.startswith("- [x] ")
             todo_text = stripped[6:]
             blocks.append({
                 "object": "block",
                 "type": "to_do",
                 "to_do": {
-                    "rich_text": [{"type": "text", "text": {"content": todo_text[:2000]}}],
+                    "rich_text": text_to_rich_text(todo_text),
                     "checked": checked
                 }
             })
-        # Bullet list
-        elif stripped.startswith("- ") or stripped.startswith("* ") or stripped.startswith("• "):
+            i += 1
+            continue
+
+        # Bullet List Item
+        if stripped.startswith("- ") or stripped.startswith("* ") or stripped.startswith("• "):
             bullet_text = stripped[2:]
             blocks.append({
                 "object": "block",
                 "type": "bulleted_list_item",
-                "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": bullet_text[:2000]}}]}
+                "bulleted_list_item": {
+                    "rich_text": text_to_rich_text(bullet_text)
+                }
             })
-        # Horizontal Rule
-        elif stripped == "---" or stripped == "***":
-            blocks.append({
-                "object": "block",
-                "type": "divider",
-                "divider": {}
-            })
-        # Table rows or standard text
-        elif stripped.startswith("|"):
-            if "---" in stripped:
-                continue
-            cols = [c.strip() for c in stripped.split("|")[1:-1]]
-            row_text = " │ ".join(cols)
-            blocks.append({
-                "object": "block",
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"type": "text", "text": {"content": row_text[:2000]}}]}
-            })
-        else:
-            blocks.append({
-                "object": "block",
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"type": "text", "text": {"content": stripped[:2000]}}]}
-            })
+            i += 1
+            continue
 
-    return blocks[:98] # Max blocks allowed by Notion per request
+        # Numbered List Item
+        if re.match(r'^\d+\.\s+', stripped):
+            num_text = re.sub(r'^\d+\.\s+', '', stripped)
+            blocks.append({
+                "object": "block",
+                "type": "numbered_list_item",
+                "numbered_list_item": {
+                    "rich_text": text_to_rich_text(num_text)
+                }
+            })
+            i += 1
+            continue
+
+        # Standard Paragraph
+        blocks.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": text_to_rich_text(stripped)
+            }
+        })
+        i += 1
+
+    return blocks[:98] # Notion request limit
 
 def publish_to_notion_api(api_key: str, raw_parent_page_id: str, title: str, markdown_content: str):
     """Pushes formal Change Management RFC page to Notion API."""
@@ -180,10 +303,6 @@ def publish_to_notion_api(api_key: str, raw_parent_page_id: str, title: str, mar
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8")
         print(f"❌ Notion API HTTP Error {e.code}: {error_body}")
-        if e.code == 404:
-            print("\n💡 Troubleshooting 404:")
-            print("1. Did you connect the integration to your Notion page? (Click '...' -> Connections -> Add your Integration)")
-            print(f"2. Verified Page ID: '{parent_id}'")
         return None
     except Exception as e:
         print(f"❌ Connection error to Notion API: {str(e)}")
