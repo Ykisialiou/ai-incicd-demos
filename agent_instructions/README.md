@@ -9,6 +9,7 @@ This directory contains production-grade system prompts, operational rules, and 
 | **[Terraform Analyzer Agent](./terraform_analyzer_agent/)** | Pull Request / `terraform plan` | Detect destructive replacements, data loss, security misconfigurations (e.g. `0.0.0.0/0`), and assess blast radius. | PR Review Comment & Pipeline Safety Gate |
 | **[Trivy Security Agent](./trivy_security_agent/)** | Vulnerability Scan / Image Build | Triage CVE noise, contextualize reachability/exploitability, provide instant copy-paste patch diffs. | Security Gate Decision & PR Triage Table |
 | **[Build Doctor Agent](./build_doctor_agent/)** | CI Job Failure / Step Exit Code != 0 | Ingest massive failed build logs (500+ lines), pinpoint the exact failing line, root cause, and remediation command. | Incident / PR Comment & Fix Instructions |
+| **[Verifier Agent (LLM-as-a-Judge)](./verifier_agent/)** | Pre-publication / Gate Evaluation | Audit primary agent reports against raw AST/logs, detect hallucinations, and score factual accuracy. | Strict JSON Audit Verdict & CI Gate Block |
 
 ---
 
@@ -28,11 +29,18 @@ This directory contains production-grade system prompts, operational rules, and 
 
 ## Invocation Pattern
 
-Agents can be invoked via `bin/agy` (or system `agy` CLI):
+Agents are invoked via the official Google Antigravity CLI (`agy`):
 
 ```bash
-# Example: Pipe JSON / Log directly to agent via agy
-cat terraform_plan.json | ./bin/agy \
-  --system-prompt agent_instructions/terraform_analyzer_agent/system_prompt.md \
-  --prompt "Analyze this plan against production safety rules."
+# Example: Invoke agent with instructions and input data non-interactively
+PROMPT="System Instructions:
+$(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
+
+Task:
+Analyze this plan against production safety rules.
+
+Input Plan JSON:
+$(cat terraform_plan.json)"
+
+agy -p "$PROMPT" --dangerously-skip-permissions
 ```

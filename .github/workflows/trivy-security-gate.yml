@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'demos/demo2-trivy-security-analyzer/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to checkout and analyze (default: main)'
+        required: true
+        default: 'main'
 
 permissions:
   contents: read
@@ -11,36 +17,57 @@ permissions:
 
 jobs:
   trivy-ai-triage:
+    name: Trivy Security AI Triage Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Install Trivy Scanner
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run Real Trivy Security Scan
+        run: |
+          trivy fs --format json --output trivy_scan.json demos/demo2-trivy-security-analyzer/sample_app
+          echo "Generated live trivy_scan.json ($(wc -c < trivy_scan.json) bytes)"
 
       - name: Install Antigravity CLI (agy)
         run: |
-          curl -fsSL https://antigravity.google/cli/install.sh | bash || true
-          echo "$HOME/.antigravity/bin:$HOME/.local/bin" >> $GITHUB_PATH
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
 
-      - name: Install Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: 'demos/demo2-trivy-security-analyzer/sample_app'
-          format: 'json'
-          output: 'trivy_report.json'
-
-      - name: Run Trivy Security AI Agent (agy)
-        id: security_agent
-        env:
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+      - name: Configure Antigravity CLI
         run: |
-          ./bin/agy \
-            --system-prompt agent_instructions/trivy_security_agent/system_prompt.md \
-            --file trivy_report.json \
-            --prompt "Triage this raw Trivy vulnerability scan. Filter out unexploitable noise and provide concise remediation patches." \
-            --output security_triage.md
+          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
+          echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
+          echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
 
-          # Append to GitHub Step Summary
+      - name: Run AI Agent Security Triage (agy)
+        env:
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo "================================================================================"
+          echo " 🤖 Invoking Antigravity Security Agent on live Trivy Scan"
+          echo "================================================================================"
+
+          PROMPT="System Instructions:
+          $(cat agent_instructions/trivy_security_agent/system_prompt.md)
+
+          Task:
+          Triage this raw Trivy security scan. Filter noise, identify root-cause fixes (like base image updates), highlight actionable CVEs, and generate copy-paste remediation diffs.
+
+          Input Trivy Scan JSON:
+          $(cat trivy_scan.json)"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions | tee security_triage.md
+
+          echo "# Demo 2: Trivy DevSecOps Security AI Triage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           cat security_triage.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Security Triage Comment
@@ -49,10 +76,12 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const reviewBody = fs.readFileSync('security_triage.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: reviewBody
-            });
+            if (fs.existsSync('security_triage.md')) {
+              const reviewBody = fs.readFileSync('security_triage.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: reviewBody
+              });
+            }
