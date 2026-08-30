@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------------------------
-# Simulates a broken CI build step with noisy logs
+# DEMO 3: Broken Build Pipeline Step (PR #4)
+# Captures raw logs on failure -> Triaged by Build Doctor Agent
 # ------------------------------------------------------------------------------
 set -e
 
