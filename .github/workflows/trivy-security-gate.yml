@@ -35,35 +35,14 @@ jobs:
           echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
-      - name: Install Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: 'demos/demo2-trivy-security-analyzer/sample_app'
-          format: 'json'
-          output: 'trivy_report.json'
-
-      - name: Run Trivy Security AI Agent (agy)
+      - name: Run Demo 2 - Trivy Security Triage Agent (agy)
         id: security_agent
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
-          SCAN_FILE="trivy_report.json"
-          if [ ! -s "$SCAN_FILE" ] || grep -q '"Results": \[\]' "$SCAN_FILE"; then
-            SCAN_FILE="demos/demo2-trivy-security-analyzer/trivy_scan.json"
-          fi
-
-          FINAL_PROMPT="System Instructions:
-$(cat agent_instructions/trivy_security_agent/system_prompt.md)
-
-Task:
-Triage this raw Trivy vulnerability scan. Compare raw findings against business risk, filter out unexploitable noise, and provide concise remediation patches.
-
-Input Trivy Scan JSON:
-$(cat "$SCAN_FILE")"
-
-          agy -p "$FINAL_PROMPT" --dangerously-skip-permissions > security_triage.md
+          chmod +x demos/demo2-trivy-security-analyzer/run_demo.sh
+          ./demos/demo2-trivy-security-analyzer/run_demo.sh | tee security_triage.md
 
           # Append to GitHub Step Summary
           cat security_triage.md >> $GITHUB_STEP_SUMMARY

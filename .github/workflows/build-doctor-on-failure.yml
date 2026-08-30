@@ -29,45 +29,27 @@ jobs:
           curl -fsSL https://antigravity.google/cli/install.sh | bash
           echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
 
-      - name: Execute Project Build (Simulated Step)
-        id: run_build
-        continue-on-error: true
-        run: |
-          # Simulating a failure and capturing logs
-          bash demos/demo3-build-failure-doctor/sample_broken_pipeline/broken_build.sh > build_output.log 2>&1
-          exit $?
-
       - name: Configure Antigravity CLI
-        if: steps.run_build.outcome == 'failure'
         run: |
           mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
           echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
-      - name: Run Build Doctor AI Agent on Failure (agy)
-        if: steps.run_build.outcome == 'failure'
+      - name: Run Demo 3 - Build Doctor Failure Analyzer (agy)
+        id: run_build_doctor
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
-          echo "Build failed. Invoking Build Doctor Agent..."
-          FINAL_PROMPT="System Instructions:
-$(cat agent_instructions/build_doctor_agent/system_prompt.md)
-
-Task:
-Analyze this failed build log, find the root cause, and provide a direct fix.
-
-Failed Build Logs:
-$(cat build_output.log)"
-
-          agy -p "$FINAL_PROMPT" --dangerously-skip-permissions > build_diagnosis.md
+          chmod +x demos/demo3-build-failure-doctor/run_demo.sh
+          ./demos/demo3-build-failure-doctor/run_demo.sh | tee build_diagnosis.md
 
           # Append diagnosis to Step Summary
           cat build_diagnosis.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Diagnosis Comment
         uses: actions/github-script@v7
-        if: steps.run_build.outcome == 'failure' && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         with:
           script: |
             const fs = require('fs');
@@ -78,9 +60,3 @@ $(cat build_output.log)"
               repo: context.repo.repo,
               body: diagnosis
             });
-
-      - name: Finalize Failure Status
-        if: steps.run_build.outcome == 'failure'
-        run: |
-          echo "Pipeline failed as expected in demo. Build Doctor has posted diagnosis."
-          exit 1
