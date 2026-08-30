@@ -57,7 +57,13 @@ $payload"
 
   echo "🤖 Invoking Official Antigravity Verifier Agent (LLM-as-a-Judge)..."
   local result_json
-  result_json=$(agy -p "$verifier_prompt" --dangerously-skip-permissions)
+  rm -f /tmp/agy_verifier.log
+  result_json=$(agy --log-file /tmp/agy_verifier.log -p "$verifier_prompt" --dangerously-skip-permissions 2>&1 || true)
+  if [ -f /tmp/agy_verifier.log ]; then
+    echo "--- [DEBUG AGY LOG] ---"
+    cat /tmp/agy_verifier.log
+    echo "-----------------------"
+  fi
 
   echo ""
   echo "📊 Audit Evaluation Result:"
