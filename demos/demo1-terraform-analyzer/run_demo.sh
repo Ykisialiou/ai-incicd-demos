@@ -47,7 +47,10 @@ Perform full SRE and security analysis on this Terraform plan. Evaluate destruct
 Input Plan JSON:
 $(cat "$PLAN_JSON")"
 
-agy --model "Gemini 3.7 Flash (Low)" -p "$ANALYSIS_PROMPT" --dangerously-skip-permissions
+agy --model "Gemini 3.5 Flash (Low)" -p "$ANALYSIS_PROMPT" --dangerously-skip-permissions --log-file agy_debug.log || {
+  echo "=== AGY DEBUG LOG ==="
+  cat agy_debug.log || true
+}
 
 echo ""
 echo "Step 3: Generating Live CAB / Change Management Release Notification Email..."
