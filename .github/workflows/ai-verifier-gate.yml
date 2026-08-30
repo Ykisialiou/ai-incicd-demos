@@ -1,20 +1,19 @@
 name: Demo 4 - AI Verifier & Anti-Hallucination Gate
 
 on:
-  workflow_dispatch:
-    inputs:
-      scenario:
-        description: 'Verification Scenario to Run'
-        required: true
-        type: choice
-        options:
-          - contrast_both
-          - valid_pass
-          - hallucination_fail
-        default: contrast_both
   pull_request:
     paths:
       - 'demos/demo4-ai-verifier-gate/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to checkout and analyze (default: main)'
+        required: true
+        default: 'main'
+      scenario:
+        description: 'Verification Scenario: contrast_both | valid_pass | hallucination_fail'
+        required: false
+        default: 'contrast_both'
 
 permissions:
   contents: read
@@ -27,6 +26,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
