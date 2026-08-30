@@ -308,9 +308,18 @@ def publish_to_notion_api(api_key: str, raw_parent_page_id: str, title: str, mar
         print(f"❌ Connection error to Notion API: {str(e)}")
         return None
 
+def extract_title_from_markdown(content: str, default_title: str) -> str:
+    for line in content.splitlines():
+        if line.strip().startswith("# "):
+            title = line.strip()[2:].strip()
+            if title:
+                return title
+    return default_title
+
 def main():
     parser = argparse.ArgumentParser(description="Publish RFC to Notion / Change Management")
     parser.add_argument("--input", "-i", required=True, help="Path to RFC markdown file")
+    parser.add_argument("--title", "-t", default=None, help="Optional custom title for Notion page")
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
@@ -323,13 +332,16 @@ def main():
     notion_api_key = os.getenv("NOTION_API_KEY")
     notion_page_id = os.getenv("NOTION_PAGE_ID") or os.getenv("NOTION_DATABASE_ID")
 
+    page_title = args.title or extract_title_from_markdown(content, "RFC: Live Infrastructure Release Analysis")
+
     print(f"📄 Local RFC Document ready at: {args.input}")
+    print(f"📑 Extracted Document Title: {page_title}")
     
     if notion_api_key and notion_page_id:
         publish_to_notion_api(
             api_key=notion_api_key,
             raw_parent_page_id=notion_page_id,
-            title="RFC-20260831-01: Production DB & Analytics Infrastructure Release",
+            title=page_title,
             markdown_content=content
         )
     else:
