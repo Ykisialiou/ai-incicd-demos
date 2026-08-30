@@ -71,14 +71,44 @@ $PLAN_CONTENT"
 
       - name: Generate & Publish Live Change Management RFC to Notion
         env:
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID || vars.NOTION_PAGE_ID || 'Change-management-3ccf0d2a78318057b0ebfcff2b19caf8' }}
         run: |
+          set -o pipefail
           echo "================================================================================"
-          echo " 📑 Publishing Live Change Management RFC to Notion"
+          echo " 📑 AI Agent Generating Live Change Management RFC Document from Plan JSON"
           echo "================================================================================"
-          python3 demos/demo1-terraform-analyzer/publish_notion_rfc.py \
-            --input demos/demo1-terraform-analyzer/change_requests/RFC-20260831-01-customer-db.md
+          
+          PLAN_CONTENT=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+          RFC_PROMPT="You are an enterprise SRE Lead and Change Advisory Board (CAB) Lead.
+Based on the following live Terraform plan JSON, generate a formal, complete, production-ready Change Management RFC (Request For Comments) markdown document.
+
+Structure the RFC with the following exact sections:
+1. Title line with # RFC-20260831-01: Production Infrastructure Release
+2. Header with Status: PENDING_CAB_REVIEW, Target Window: Next Maintenance Window, Author: SRE AI Automation Agent
+3. Metadata & Approvals Table (Service Affected, Environment, Risk Level, Blast Radius Score out of 10, Expected Downtime, Required Reviewers)
+4. Executive Summary & Business Justification
+5. Detailed Infrastructure Changes Table (Resource Name, Provider Type, Action [CREATE/UPDATE/REPLACE/DESTROY], SRE Blast Radius & Risk)
+6. Critical Warnings (Highlight any destructive database recreations, DNS scope creep, or open security groups)
+7. Rollback & Contingency Plan (Specific triggers, rollback command, and database snapshot recovery steps)
+8. Post-Release Verification Checklist (Checkbox list with verification steps, e.g. Datadog dashboards, smoke tests, security group audits)
+
+=== [INPUT TERRAFORM PLAN JSON] ===
+$PLAN_CONTENT"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$RFC_PROMPT" --dangerously-skip-permissions < /dev/null | tee live_generated_rfc.md
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📑 AI Generated Change Management RFC" >> $GITHUB_STEP_SUMMARY
+          cat live_generated_rfc.md >> $GITHUB_STEP_SUMMARY
+
+          echo "================================================================================"
+          echo " 🚀 Publishing Live AI-Generated RFC to Notion"
+          echo "================================================================================"
+          python3 demos/demo1-terraform-analyzer/publish_notion_rfc.py --input live_generated_rfc.md
 
       - name: Post PR Safety Review Comment
         uses: actions/github-script@v7

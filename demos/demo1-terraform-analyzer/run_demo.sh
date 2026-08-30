@@ -70,12 +70,31 @@ $(cat "$PLAN_JSON")"
 agy --model "Gemini 3.5 Flash (Low)" -p "$CAB_PROMPT" --dangerously-skip-permissions
 
 echo ""
-echo "Step 4: Publishing Live Change Management RFC to Notion..."
+echo "Step 4: AI Agent Generating Live Change Management RFC & Publishing to Notion..."
 echo "--------------------------------------------------------------------------------"
 
-python3 "$SCRIPT_DIR/publish_notion_rfc.py" --input "$SCRIPT_DIR/change_requests/RFC-20260831-01-customer-db.md"
+RFC_PROMPT="You are an enterprise SRE Lead and Change Advisory Board (CAB) Lead.
+Based on the following live Terraform plan JSON, generate a formal, complete, production-ready Change Management RFC (Request For Comments) markdown document.
+
+Structure the RFC with the following exact sections:
+1. Title line with # RFC-20260831-01: Production Infrastructure Release
+2. Header with Status: PENDING_CAB_REVIEW, Target Window: Next Maintenance Window, Author: SRE AI Automation Agent
+3. Metadata & Approvals Table (Service Affected, Environment, Risk Level, Blast Radius Score out of 10, Expected Downtime, Required Reviewers)
+4. Executive Summary & Business Justification
+5. Detailed Infrastructure Changes Table (Resource Name, Provider Type, Action [CREATE/UPDATE/REPLACE/DESTROY], SRE Blast Radius & Risk)
+6. Critical Warnings (Highlight any destructive database recreations, DNS scope creep, or open security groups)
+7. Rollback & Contingency Plan (Specific triggers, rollback command, and database snapshot recovery steps)
+8. Post-Release Verification Checklist (Checkbox list with verification steps, e.g. Datadog dashboards, smoke tests, security group audits)
+
+=== [INPUT TERRAFORM PLAN JSON] ===
+$(cat "$PLAN_JSON")"
+
+LIVE_RFC_FILE="$SCRIPT_DIR/live_generated_rfc.md"
+agy --model "Gemini 3.5 Flash (Low)" -p "$RFC_PROMPT" --dangerously-skip-permissions > "$LIVE_RFC_FILE"
+
+python3 "$SCRIPT_DIR/publish_notion_rfc.py" --input "$LIVE_RFC_FILE"
 
 echo ""
 echo "================================================================================"
-echo " ✅ Demo 1 complete! Live plan evaluated & RFC published to Notion."
+echo " ✅ Demo 1 complete! Live plan evaluated & real RFC published to Notion."
 echo "================================================================================"
