@@ -1,4 +1,4 @@
-name: "Demo 4 - AI Verifier and Anti-Hallucination Gate"
+name: Demo 4 - AI Verifier Safety Gate
 
 on:
   pull_request:
@@ -11,9 +11,9 @@ on:
         required: true
         default: 'main'
       scenario:
-        description: 'Verification Scenario: contrast_both | valid_pass | hallucination_fail'
+        description: 'Verification Scenario: all | pass | fail'
         required: false
-        default: 'contrast_both'
+        default: 'all'
 
 permissions:
   contents: read
@@ -50,13 +50,13 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
-          SCENARIO_INPUT: ${{ github.event.inputs.scenario || 'contrast_both' }}
+          SCENARIO_INPUT: ${{ github.event.inputs.scenario || 'all' }}
         run: |
           SCENARIO="$SCENARIO_INPUT"
           MODE_ARG="all"
-          if [ "$SCENARIO" = "valid_pass" ]; then
+          if [ "$SCENARIO" = "pass" ] || [ "$SCENARIO" = "valid_pass" ]; then
             MODE_ARG="pass"
-          elif [ "$SCENARIO" = "hallucination_fail" ]; then
+          elif [ "$SCENARIO" = "fail" ] || [ "$SCENARIO" = "hallucination_fail" ]; then
             MODE_ARG="fail"
           fi
 
