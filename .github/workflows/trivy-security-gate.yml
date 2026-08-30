@@ -1,6 +1,6 @@
 name: Demo 2 - Trivy DevSecOps Security Triage
 
-on:
+'on':
   push:
     branches: [main]
     paths:

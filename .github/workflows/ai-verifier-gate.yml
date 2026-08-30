@@ -1,6 +1,6 @@
 name: Demo 4 - AI Verifier Safety Gate
 
-on:
+'on':
   pull_request:
     paths:
       - 'demos/demo4-ai-verifier-gate/**'

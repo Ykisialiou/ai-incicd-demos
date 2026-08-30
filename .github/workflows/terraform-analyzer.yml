@@ -2,13 +2,19 @@ name: Demo 1 - Terraform SRE Safety Gate
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - 'demos/demo1-terraform-analyzer/**'
   pull_request:
     paths:
       - 'demos/demo1-terraform-analyzer/**'
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to analyze'
+        required: false
+        default: 'main'
 
 permissions:
   contents: read
@@ -21,8 +27,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch || github.ref }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3

@@ -1,6 +1,6 @@
 name: Demo 3 - CI Build Doctor (Failure Auto-Diagnosis)
 
-on:
+'on':
   push:
     branches: [main]
     paths:
