@@ -67,3 +67,10 @@ jobs:
               repo: context.repo.repo,
               body: reviewBody
             });
+
+      - name: Publish RFC to Notion / Change Management
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_PAGE_ID: ${{ secrets.NOTION_PAGE_ID }}
+        run: |
+          python3 demos/demo1-terraform-analyzer/publish_notion_rfc.py --input demos/demo1-terraform-analyzer/change_requests/RFC-20260831-01-customer-db.md
