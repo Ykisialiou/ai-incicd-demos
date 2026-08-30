@@ -17,6 +17,32 @@ HALLUCINATED_REPORT="$SCRIPT_DIR/sample_hallucinated_report.md"
 
 MODE="${1:-all}" # 'all', 'pass', or 'fail'
 
+call_agent() {
+  local system_prompt_file="$1"
+  local task_prompt="$2"
+  local input_payload="$3"
+
+  local combined_prompt
+  combined_prompt="$(cat << PROMPT_EOF
+$(cat "$system_prompt_file")
+
+=== TASK INSTRUCTIONS ===
+$task_prompt
+
+=== INPUT DATA ===
+$input_payload
+PROMPT_EOF
+)"
+
+  if command -v agy &>/dev/null; then
+    # Official Google Antigravity CLI binary
+    agy -p "$combined_prompt" --dangerously-skip-permissions 2>/dev/null || agy -p "$combined_prompt"
+  else
+    # Fallback to local python runner if agy CLI is not in PATH
+    echo "$input_payload" | "$PROJECT_ROOT/bin/agy" --system-prompt "$system_prompt_file" --prompt "$task_prompt"
+  fi
+}
+
 run_verification() {
   local title="$1"
   local report_file="$2"
@@ -30,24 +56,19 @@ run_verification() {
   echo ""
 
   # Create combined verification payload
-  local payload_file
-  payload_file=$(mktemp)
-  
-  cat << PAYLOAD > "$payload_file"
+  local payload
+  payload="$(cat << PAYLOAD
 === [GROUND TRUTH: RAW INPUT DATA] ===
 $(cat "$GROUND_TRUTH_TF")
 
 === [AI GENERATED REPORT TO AUDIT] ===
 $(cat "$report_file")
 PAYLOAD
+)"
 
   echo "🤖 Invoking AI Verifier Agent (LLM-as-a-Judge)..."
   local result_json
-  result_json=$(cat "$payload_file" | $CLI_CMD \
-    --system-prompt "$SYSTEM_PROMPT" \
-    --prompt "Verify the candidate AI report against ground truth. Output strictly raw JSON.")
-
-  rm -f "$payload_file"
+  result_json=$(call_agent "$SYSTEM_PROMPT" "Verify the candidate AI report against ground truth. Output strictly raw JSON." "$payload")
 
   echo ""
   echo "📊 Audit Evaluation Result:"

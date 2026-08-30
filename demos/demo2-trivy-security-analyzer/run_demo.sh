@@ -97,13 +97,37 @@ echo ""
 echo "Step 2: Invoking Trivy Security Agent to triage findings..."
 echo "--------------------------------------------------------------------------------"
 
-CLI_CMD="$PROJECT_ROOT/bin/agy"
+call_agent() {
+  local system_prompt_file="$1"
+  local task_prompt="$2"
+  local input_payload="$3"
+
+  local combined_prompt
+  combined_prompt="$(cat << PROMPT_EOF
+$(cat "$system_prompt_file")
+
+=== TASK INSTRUCTIONS ===
+$task_prompt
+
+=== INPUT DATA ===
+$input_payload
+PROMPT_EOF
+)"
+
+  if command -v agy &>/dev/null; then
+    # Official Google Antigravity CLI binary
+    agy -p "$combined_prompt" --dangerously-skip-permissions 2>/dev/null || agy -p "$combined_prompt"
+  else
+    # Fallback to local runner if agy binary not in PATH
+    echo "$input_payload" | "$PROJECT_ROOT/bin/agy" --system-prompt "$system_prompt_file" --prompt "$task_prompt"
+  fi
+}
 
 SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/trivy_security_agent/system_prompt.md"
 
-cat "$SCAN_JSON" | $CLI_CMD \
-  --system-prompt "$SYSTEM_PROMPT" \
-  --prompt "Triage this raw Trivy security scan. Filter noise, identify root-cause fixes (like base image updates), highlight actionable CVEs, and generate copy-paste remediation diffs."
+call_agent "$SYSTEM_PROMPT" \
+  "Triage this raw Trivy security scan. Filter noise, identify root-cause fixes (like base image updates), highlight actionable CVEs, and generate copy-paste remediation diffs." \
+  "$(cat "$SCAN_JSON")"
 
 echo ""
 echo "================================================================================"

@@ -42,12 +42,35 @@ def call_gemini_api(api_key: str, model: str, system_instruction: str, user_cont
         return None
     except Exception as e:
         sys.stderr.write(f"Connection error to Antigravity API: {str(e)}\n")
-        return None
+def call_official_agy_cli(system_instruction: str, user_content: str, model: str = None) -> str:
+    script_path = os.path.abspath(__file__)
+    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(path_dir, "agy")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            try:
+                if os.path.samefile(candidate, script_path):
+                    continue
+            except Exception:
+                if os.path.abspath(candidate) == script_path:
+                    continue
+            
+            full_prompt = f"System Instructions:\n{system_instruction}\n\nTask & Data:\n{user_content}"
+            cmd = [candidate, "-p", full_prompt, "--dangerously-skip-permissions"]
+            if model:
+                cmd.extend(["--model", model])
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+                if res.returncode == 0 and res.stdout.strip():
+                    return res.stdout.strip()
+            except Exception as e:
+                sys.stderr.write(f"Official agy execution note: {e}\n")
+    return None
 
 def offline_simulation(system_instruction: str, user_content: str) -> str:
     sys.stderr.write("\n[NOTE] Running agy in Demo Simulation Mode.\n\n")
     user_lower = user_content.lower()
     system_lower = system_instruction.lower() if system_instruction else ""
+    content_lower = user_lower + " " + system_lower
     if "verifier" in system_lower or "verifier" in user_lower or "hallucination" in system_lower or "judge" in system_lower or "auditor" in system_lower:
         if "hallucination_scenario" in user_lower or "hallucinated" in user_lower or "payment_gateway" in user_lower or "fake" in user_lower or "apocalypse" in user_lower:
             return json.dumps({
@@ -331,11 +354,15 @@ def main():
     api_key = get_api_key()
     response_text = None
     
-    # 1. Call Gemini / Antigravity API if key available
-    if api_key and not args.offline:
+    # 1. Try official agy CLI binary if present in system
+    if not args.offline:
+        response_text = call_official_agy_cli(system_instruction, user_content, args.model)
+    
+    # 2. Call Gemini / Antigravity API directly if key available
+    if not response_text and api_key and not args.offline:
         response_text = call_gemini_api(api_key, args.model, system_instruction, user_content)
     
-    # 2. Fallback to simulation
+    # 3. Fallback to simulation
     if not response_text:
         response_text = offline_simulation(system_instruction, user_content)
 

@@ -98,13 +98,37 @@ echo ""
 echo "Step 2: Invoking Terraform Analyzer Agent with plan JSON..."
 echo "--------------------------------------------------------------------------------"
 
-CLI_CMD="$PROJECT_ROOT/bin/agy"
+call_agent() {
+  local system_prompt_file="$1"
+  local task_prompt="$2"
+  local input_payload="$3"
+
+  local combined_prompt
+  combined_prompt="$(cat << PROMPT_EOF
+$(cat "$system_prompt_file")
+
+=== TASK INSTRUCTIONS ===
+$task_prompt
+
+=== INPUT DATA ===
+$input_payload
+PROMPT_EOF
+)"
+
+  if command -v agy &>/dev/null; then
+    # Official Google Antigravity CLI binary
+    agy -p "$combined_prompt" --dangerously-skip-permissions 2>/dev/null || agy -p "$combined_prompt"
+  else
+    # Fallback to local runner if agy binary not in PATH
+    echo "$input_payload" | "$PROJECT_ROOT/bin/agy" --system-prompt "$system_prompt_file" --prompt "$task_prompt"
+  fi
+}
 
 SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/system_prompt.md"
 
-cat "$PLAN_JSON" | $CLI_CMD \
-  --system-prompt "$SYSTEM_PROMPT" \
-  --prompt "Perform full SRE and security analysis on this Terraform plan. Evaluate destructive replacements, security group ingress, blast radius score, and state gate decision."
+call_agent "$SYSTEM_PROMPT" \
+  "Perform full SRE and security analysis on this Terraform plan. Evaluate destructive replacements, security group ingress, blast radius score, and state gate decision." \
+  "$(cat "$PLAN_JSON")"
 
 echo ""
 echo "Step 3: Generating Automated CAB / Change Management Release Notification Email..."
@@ -112,9 +136,9 @@ echo "--------------------------------------------------------------------------
 
 CAB_PROMPT="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/cab_email_template.md"
 
-cat "$PLAN_JSON" | $CLI_CMD \
-  --system-prompt "$CAB_PROMPT" \
-  --prompt "Generate an executive Change Management / CAB approval email based on this Terraform plan. Highlight scheduled release window, business summary of changes, downtime risk, and rollback procedure."
+call_agent "$CAB_PROMPT" \
+  "Generate an executive Change Management / CAB approval email based on this Terraform plan. Highlight scheduled release window, business summary of changes, downtime risk, and rollback procedure." \
+  "$(cat "$PLAN_JSON")"
 
 echo ""
 echo "Step 4: Publishing Confluence / Notion RFC (Request for Change) Page..."
