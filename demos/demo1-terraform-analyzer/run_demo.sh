@@ -158,9 +158,11 @@ cat << 'EOF' > "$RFC_FILE"
 
 | Resource Address | Provider Type | Action | SRE Blast Radius |
 | :--- | :--- | :--- | :--- |
-| `aws_db_instance.production_db` | `aws_db_instance` | 💥 **REPLACE (DESTROY -> CREATE)** | 🔴 **CRITICAL** |
-| `aws_security_group.allow_ssh` | `aws_security_group` | ⚠️ **CREATE** | 🟠 **HIGH** (`0.0.0.0/0:22`) |
-| `aws_s3_bucket.data_lake` | `aws_s3_bucket` | ✨ **CREATE** | 🟢 **LOW** |
+| `aws_db_instance.production_db` | `aws_db_instance` | 💥 **REPLACE (DESTROY -> CREATE)** | 🔴 **CRITICAL (9.5/10)** |
+| `aws_cloudfront_distribution.cdn` | `aws_cloudfront_distribution` | 🔄 **UPDATE** | 🟡 **MEDIUM (5.0/10)** |
+| `aws_security_group.app_ingress` | `aws_security_group` | 🔄 **UPDATE** | 🟡 **WARN (4.0/10)** |
+| `aws_route53_record.api_dns` | `aws_route53_record` | ✨ **CREATE** | 🟢 **LOW (2.0/10)** |
+| `aws_s3_bucket.data_lake` | `aws_s3_bucket` | 🔄 **UPDATE** | 🟢 **SAFE (1.0/10)** |
 
 > [!CAUTION]
 > **Destructive Replacement Warning**:

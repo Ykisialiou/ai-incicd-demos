@@ -24,21 +24,60 @@
       }
     },
     {
-      "address": "aws_security_group.allow_ssh",
+      "address": "aws_security_group.app_ingress",
       "type": "aws_security_group",
-      "name": "allow_ssh",
+      "name": "app_ingress",
       "change": {
-        "actions": ["create"],
-        "after": {
-          "name": "allow_ssh_from_internet",
+        "actions": ["update"],
+        "before": {
+          "name": "app-production-ingress",
           "ingress": [
             {
               "cidr_blocks": ["0.0.0.0/0"],
-              "from_port": 22,
-              "to_port": 22,
+              "from_port": 443,
+              "to_port": 443,
               "protocol": "tcp"
             }
           ]
+        },
+        "after": {
+          "name": "app-production-ingress",
+          "ingress": [
+            {
+              "cidr_blocks": ["10.0.0.0/16"],
+              "from_port": 443,
+              "to_port": 443,
+              "protocol": "tcp"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "address": "aws_cloudfront_distribution.cdn",
+      "type": "aws_cloudfront_distribution",
+      "name": "cdn",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "aliases": []
+        },
+        "after": {
+          "aliases": ["api.company.com"],
+          "enabled": true
+        }
+      }
+    },
+    {
+      "address": "aws_route53_record.api_dns",
+      "type": "aws_route53_record",
+      "name": "api_dns",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "name": "api.company.com",
+          "type": "A",
+          "zone_id": "Z123456789ABC"
         }
       }
     },
@@ -47,9 +86,21 @@
       "type": "aws_s3_bucket",
       "name": "data_lake",
       "change": {
-        "actions": ["create"],
+        "actions": ["update"],
+        "before": {
+          "bucket": "company-production-data-lake-raw",
+          "tags": {
+            "Environment": "production"
+          }
+        },
         "after": {
-          "bucket": "company-production-data-lake-raw"
+          "bucket": "company-production-data-lake-raw",
+          "tags": {
+            "Environment": "production",
+            "CostCenter": "Data-Analytics-402",
+            "Owner": "DataOps-Team",
+            "ComplianceScope": "SOC2-Type2"
+          }
         }
       }
     }

@@ -120,7 +120,7 @@ Generated automatically by Antigravity CI/CD Agent (agy)."""
         return """# 🛑 Terraform SRE Gate: BLOCKED (Action Required)
 
 > **Blast Radius Score**: **9.5 / 10 (CRITICAL)**  
-> **Change Summary**: `+2` to add, `~0` to change, `💥1` to replace, `-0` to destroy.  
+> **Change Summary**: `+1` to add, `~3` to change, `💥1` to replace, `-0` to destroy.  
 > **Notion RFC Page**: [📄 View CAB RFC Document](demos/demo1-terraform-analyzer/change_requests/RFC-20260831-01-customer-db.md)
 
 ---
@@ -129,42 +129,35 @@ Generated automatically by Antigravity CI/CD Agent (agy)."""
 
 | Resource | Action | Risk Level | Reason & Production Impact |
 | :--- | :--- | :--- | :--- |
-| `aws_db_instance.production_db` | 💥 **REPLACE (DESTROY -> CREATE)** | 🔴 **CRITICAL** | Renaming DB identifier forces cluster drop and recreation |
-| `aws_security_group.allow_ssh` | ⚠️ **CREATE** | 🟠 **HIGH** | Ingress open to entire public internet (`0.0.0.0/0:22`) |
-| `aws_s3_bucket.data_lake` | ✨ **CREATE** | 🟢 **LOW** | New standard encrypted S3 storage bucket |
+| `aws_db_instance.production_db` | 💥 **REPLACE (DESTROY -> CREATE)** | 🔴 **CRITICAL (9.5/10)** | Renaming DB identifier forces **DROP & RECREATE** of production DB cluster! |
+| `aws_cloudfront_distribution.cdn` | 🔄 **UPDATE** | 🟡 **MEDIUM (5.0/10)** | Added domain alias `api.company.com`. Edge distribution propagation takes ~5-15 mins. |
+| `aws_security_group.app_ingress` | 🔄 **UPDATE** | 🟡 **WARN (4.0/10)** | Ingress tightened (`0.0.0.0/0` ➔ `10.0.0.0/16:443`). Verify no external traffic is dropped! |
+| `aws_route53_record.api_dns` | ✨ **CREATE** | 🟢 **LOW (2.0/10)** | Safe additive DNS A-record pointing to CloudFront distribution. |
+| `aws_s3_bucket.data_lake` | 🔄 **UPDATE** | 🟢 **SAFE (1.0/10)** | In-place metadata tags added (`CostCenter`, `Owner`, `ComplianceScope`). Zero downtime. |
 
 ---
 
 ### 🚨 Critical Alerts & Hazards
-- 💥 **DESTRUCTIVE REPLACEMENT DETECTED**: `aws_db_instance.production_db` will be **DROPPED AND RECREATED**. Potential data loss and downtime!
-- ⚠️ **PUBLIC INGRESS HAZARD**: `aws_security_group.allow_ssh` opens port `22` to `0.0.0.0/0` (Entire Internet).
+- 💥 **DESTRUCTIVE REPLACEMENT DETECTED**: `aws_db_instance.production_db` will be **DESTROYED AND RECREATED**. Severe data loss and outage risk!
+- ⏱️ **EDGE PROPAGATION LATENCY**: `aws_cloudfront_distribution.cdn` requires 5-15 mins for global edge sync and ACM certificate validation.
+- 🔒 **SECURITY GROUP TIGHTENING**: `aws_security_group.app_ingress` restricts traffic to `10.0.0.0/16`. Ensure all client services are inside VPC.
 
 ---
 
 ### 🛡️ Recommended HCL Remediation Patch
 
 ```hcl
-# Fix 1: Prevent accidental DB destruction
+# Fix: Prevent accidental DB destruction
 resource "aws_db_instance" "production_db" {
   lifecycle {
     prevent_destroy = true
-  }
-}
-
-# Fix 2: Restrict SSH ingress to internal corporate CIDR
-resource "aws_security_group" "allow_ssh" {
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"] # Corporate VPN only
   }
 }
 ```
 
 ---
 
-**Gate Verdict**: ❌ **🔴 BLOCKED (Action Required Before Apply)**
+**Gate Verdict**: ❌ **🔴 BLOCKED (Prevent DB destruction before merge)**
 """
     elif "trivy" in content_lower or "vulnerabilit" in content_lower or "cve-" in content_lower:
         return """# 🛡️ Trivy Security Triage Report
