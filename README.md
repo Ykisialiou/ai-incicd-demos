@@ -50,29 +50,29 @@ ai-incicd-demos/
 
 ## ⚡ The Three Live Demos
 
-### 1. [Demo 1: Terraform Plan & Blast Radius Analyzer](./demos/demo1-terraform-analyzer/)
-- **Trigger**: Pull Request with infrastructure changes.
-- **Problem**: A developer renames an RDS database identifier (which silently triggers a destructive drop-and-recreate) and opens SSH `0.0.0.0/0`.
-- **AI Solution**: The agent parses the Terraform AST JSON, calculates a **Blast Radius Score of 9.5/10**, and posts a **BLOCKED** gate decision with an HCL `prevent_destroy` patch.
-- **Run**:
+### 1. [Demo 1: Terraform Plan & Blast Radius Analyzer](./demos/demo1-terraform-analyzer/) — [🔗 Live PR #2](https://github.com/Ykisialiou/ai-incicd-demos/pull/2)
+- **Trigger**: Pull Request with infrastructure changes (`demos/demo1-terraform-analyzer/**`).
+- **Problem**: A developer renames an RDS database identifier (which silently triggers a destructive drop-and-recreate) and sneaks in an unauthorized DNS change for `api.company.com`.
+- **AI Solution**: The agent parses the Terraform AST JSON, calculates a **Blast Radius Score of 9.5/10**, highlights the difference between static linting and business context, and blocks the change with an HCL `prevent_destroy` patch.
+- **Run Locally**:
   ```bash
   ./demos/demo1-terraform-analyzer/run_demo.sh
   ```
 
-### 2. [Demo 2: Trivy Security Scan Triage & Remediation](./demos/demo2-trivy-security-analyzer/)
-- **Trigger**: Container image build / Trivy vulnerability scan.
+### 2. [Demo 2: Trivy Security Scan Triage & Remediation](./demos/demo2-trivy-security-analyzer/) — [🔗 Live PR #3](https://github.com/Ykisialiou/ai-incicd-demos/pull/3)
+- **Trigger**: Container image build / Trivy vulnerability scan (`demos/demo2-trivy-security-analyzer/**`).
 - **Problem**: Traditional scanners output 18+ noisy CVEs, causing developer alert fatigue.
 - **AI Solution**: The agent identifies that 14 OS CVEs are caused by an outdated base image, suppresses unfixable noise, and produces a 1-line Dockerfile diff (`node:16-alpine` ➔ `node:20-alpine`).
-- **Run**:
+- **Run Locally**:
   ```bash
   ./demos/demo2-trivy-security-analyzer/run_demo.sh
   ```
 
-### 3. [Demo 3: CI/CD Build Failure Doctor](./demos/demo3-build-failure-doctor/)
-- **Trigger**: Step failure (`if: failure()`, exit code != 0).
+### 3. [Demo 3: CI/CD Build Failure Doctor](./demos/demo3-build-failure-doctor/) — [🔗 Live PR #4](https://github.com/Ykisialiou/ai-incicd-demos/pull/4)
+- **Trigger**: Step failure (`if: failure()`, exit code != 0 in `demos/demo3-build-failure-doctor/**`).
 - **Problem**: Build fails with 300+ lines of messy compile output (`gyp ERR! find Python - "python3" can't be in PATH`).
 - **AI Solution**: The agent ignores 280 lines of irrelevant download logs, isolates the missing Alpine C++ compiler dependencies, and outputs the exact fix command (`apk add --no-cache python3 make g++`).
-- **Run**:
+- **Run Locally**:
   ```bash
   ./demos/demo3-build-failure-doctor/run_demo.sh
   ```

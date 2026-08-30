@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'demos/demo2-trivy-security-analyzer/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to checkout and analyze (default: main)'
+        required: true
+        default: 'main'
 
 permissions:
   contents: read
@@ -15,6 +21,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
       - name: Install Antigravity CLI (agy)
         run: |

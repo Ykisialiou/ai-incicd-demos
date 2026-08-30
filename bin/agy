@@ -1,15 +1,9 @@
-#!/usr/bin/env bash
-# ==============================================================================
-# agy - Antigravity CI/CD Bridge Runner
-#
-# Bridges CI/CD data and prompt templates directly to the Antigravity engine (agy)
-# ==============================================================================
+#!/usr/bin/env python3
+"""
+agy - Antigravity CI/CD Bridge Runner
+Bridges CI/CD data and prompt templates directly to the Antigravity engine (agy)
+"""
 
-set -euo pipefail
-
-PYTHON_BIN="$(command -v python3 || echo "python")"
-
-exec "$PYTHON_BIN" - "$@" << 'PYEOF'
 import os
 import sys
 import json
@@ -23,21 +17,6 @@ DEFAULT_MODEL = os.getenv("AGY_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-fla
 
 def get_api_key():
     return os.getenv("AGY_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-
-def call_native_agy_binary(system_instruction: str, user_content: str, model: str) -> str:
-    """Call installed official agy binary in print mode if available."""
-    agy_path = shutil.which("agy")
-    # Make sure we are not calling this script itself
-    if agy_path and not os.path.samefile(agy_path, sys.argv[0]):
-        full_prompt = f"System Instructions:\n{system_instruction}\n\nUser Task & Data:\n{user_content}"
-        try:
-            cmd = [agy_path, "--print", "--dangerously-skip-permissions", full_prompt]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except Exception as e:
-            sys.stderr.write(f"Notice: agy binary invocation fallback to direct API: {str(e)}\n")
-    return None
 
 def call_gemini_api(api_key: str, model: str, system_instruction: str, user_content: str) -> str:
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
@@ -60,10 +39,10 @@ def call_gemini_api(api_key: str, model: str, system_instruction: str, user_cont
     except urllib.error.HTTPError as e:
         error_msg = e.read().decode("utf-8")
         sys.stderr.write(f"Antigravity API HTTP Error {e.code}: {error_msg}\n")
-        sys.exit(1)
+        return None
     except Exception as e:
         sys.stderr.write(f"Connection error to Antigravity API: {str(e)}\n")
-        sys.exit(1)
+        return None
 
 def offline_simulation(system_instruction: str, user_content: str) -> str:
     sys.stderr.write("\n[NOTE] Running agy in Demo Simulation Mode.\n\n")
@@ -168,41 +147,58 @@ resource "aws_db_instance" "production_db" {
 
 **Gate Verdict**: ❌ **🔴 BLOCKED (Prevent DB destruction before merge)**
 """
-    elif "trivy" in content_lower or "vulnerabilit" in content_lower or "cve-" in content_lower:
-        return """# 🛡️ Trivy Security Triage Report
+    elif "trivy" in content_lower or "vulnerabilit" in content_lower or "cve-" in content_lower or "security" in content_lower:
+        return """# 🛡️ Trivy DevSecOps AI Triage Gate: 🔴 BLOCKED (Action Required)
 
-### 🎯 Triage Summary
-- **Total Scanned Items**: 18 findings
-- **Filtered Noise (Low risk / unreachable)**: 16 items
-- **Actionable High/Critical Threats**: **2 Findings**
-- **Security Gate Decision**: ⚠️ **WARNING (Actionable Fixes Available)**
+### 🎯 Triage & Noise Reduction Summary
+- **Raw Scanned Findings**: 18 vulnerabilities & misconfigurations
+- **Filtered Low-Risk / Dev Noise**: 14 items (e.g. `zlib` in dev-dependencies, unexploitable kernel flags)
+- **Actionable Threats & Secrets**: **4 Items** (1 Secret Leak, 1 Base Image CVE, 2 Dependency Patches)
+- **Security Gate Verdict**: 🔴 **BLOCKED (Hardcoded AWS Secret Detected & Actionable Fixes Available)**
 
 ---
 
-### 🔍 Actionable Vulnerability Triage
+### 🔍 Actionable Security & Vulnerability Triage Matrix
 
-| Package | CVE ID | Severity | In-The-Wild Exploit? | Fix Available? | Recommended Action |
+| Target | Finding / Package | CVE / Rule ID | Severity | Threat Impact & Non-Obvious Nuance | Actionable Fix |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `libssl3` | `CVE-2023-0286` | 🔴 **CRITICAL** | Yes (Public PoC) | ✅ `3.0.8-r0` | Upgrade base image to `alpine:3.18+` |
-| `express` | `CVE-2022-24999` | 🟠 **HIGH** | Low | ✅ `^4.18.2` | Bump package in `package.json` |
+| `Dockerfile` | Leaked AWS Key | `aws-access-key-id` | 🔴 **CRITICAL** | **Layer History Trap**: Stored in Docker layer forever. `RUN rm` will NOT remove it! | Revoke IAM key & use BuildKit Secret Mount |
+| `Alpine OS` | `libssl3` | `CVE-2023-0286` | 🔴 **CRITICAL** | Public Buffer Overflow Exploit in OpenSSL | Upgrade base image to `node:20.11-alpine` |
+| `npm` | `express` (`qs`, `body-parser`) | `CVE-2022-24999` | 🟠 **HIGH** | **Transitive Noise**: 10 CVEs in sub-packages all fixed by 1 parent upgrade | Bump `express: ^4.18.2` |
+| `npm` | `lodash` | `CVE-2020-8203` | 🟠 **HIGH** | Prototype Pollution in `zipObjectDeep` | Bump `lodash: ^4.17.21` |
+| `npm (dev)` | `zlib` (via `archiver`) | `CVE-2023-45853` | 🟢 **SUPPRESSED** | **Fixed version: NONE**. Build-only devDependency, unreachable in production | Suppressed in CI Gate |
+| `Dockerfile` | User is Root | `AVD-DS-0002` | 🟡 **WARN** | **Permission Trap**: Simply adding `USER node` causes `EACCES` runtime crash | Add `chown /app` before `USER node` |
 
 ---
 
-### 🚀 Instant Remediation Patch
+### 🚀 Instant Remediation Diff Patch
 
-Update `Dockerfile`:
+#### 1. Fix `Dockerfile`:
 ```diff
-- FROM node:16.14-alpine
-+ FROM node:20.11-alpine
+- FROM node:16.14.0-alpine
++ FROM node:20.11.0-alpine
+
+- ENV AWS_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE"
+- ENV AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
++ # Create working directory and set proper permissions for non-root user
++ RUN mkdir -p /app && chown -R node:node /app
++ USER node
 ```
 
-Update `package.json`:
+#### 2. Fix `package.json`:
 ```diff
-- "express": "4.16.0",
-+ "express": "^4.18.2",
+  "dependencies": {
+-   "express": "4.16.0",
+-   "lodash": "4.17.15"
++   "express": "^4.18.2",
++   "lodash": "^4.17.21"
+  }
 ```
 
-**Next Steps**: Applying the base image bump automatically resolves 14 out of 16 base OS vulnerabilities.
+---
+
+**Gate Verdict**: ❌ **🔴 BLOCKED (Revoke leaked AWS IAM key and apply remediation patches)**
 """
     elif "build" in content_lower or "pipeline" in content_lower or "error" in content_lower or "gyp" in content_lower:
         return """# 🩺 CI/CD Build Doctor: Root Cause Analysis
@@ -284,11 +280,9 @@ def main():
     api_key = get_api_key()
     response_text = None
     
-    # 1. Try native agy binary if live key available
+    # 1. Call Gemini / Antigravity API if key available
     if api_key and not args.offline:
-        response_text = call_native_agy_binary(system_instruction, user_content, args.model)
-        if not response_text:
-            response_text = call_gemini_api(api_key, args.model, system_instruction, user_content)
+        response_text = call_gemini_api(api_key, args.model, system_instruction, user_content)
     
     # 2. Fallback to simulation
     if not response_text:
@@ -303,4 +297,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-PYEOF
