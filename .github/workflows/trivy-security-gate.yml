@@ -56,9 +56,12 @@ jobs:
           echo " 🤖 Invoking Antigravity Security Agent on live Trivy Scan"
           echo "================================================================================"
 
-          PROMPT="Triage this raw Trivy security scan JSON. Filter noise and unexploitable CVEs, identify root-cause base image and library updates, highlight actionable CVEs, and generate copy-paste remediation diffs."
-
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" trivy_scan.json --dangerously-skip-permissions | tee security_triage.md
+          (
+            echo "Triage this raw Trivy security scan JSON. Filter noise and unexploitable CVEs, identify root-cause base image and library updates, highlight actionable CVEs, and generate copy-paste remediation diffs."
+            echo ""
+            echo "=== [INPUT TRIVY SCAN JSON] ==="
+            cat trivy_scan.json
+          ) | agy --model "Gemini 3.5 Flash (Low)" --dangerously-skip-permissions | tee security_triage.md
 
           echo "# Demo 2: Trivy DevSecOps Security AI Triage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

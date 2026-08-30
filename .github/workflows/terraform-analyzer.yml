@@ -34,7 +34,7 @@ jobs:
           terraform init -backend=false -input=false
           terraform plan -out=tfplan -input=false
           terraform show -json tfplan > plan.json
-          echo "Generated plan.json ($(wc -c < plan.json) bytes)"
+          echo "Generated live plan.json ($(wc -c < plan.json) bytes)"
 
       - name: Install Antigravity CLI (agy)
         run: |
@@ -58,9 +58,12 @@ jobs:
           echo " 🤖 Invoking Antigravity SRE Agent on live plan.json"
           echo "================================================================================"
           
-          PROMPT="Perform a comprehensive SRE and Security review of this Terraform plan JSON. Evaluate destructive replacements, blast radius score (0-10), security group ingress risks, and provide a clear State Gate Verdict and HCL remediation patch."
-
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" demos/demo1-terraform-analyzer/terraform/plan.json --dangerously-skip-permissions | tee terraform_review.md
+          (
+            echo "Perform a comprehensive SRE and Security review of the following Terraform plan JSON. Evaluate destructive replacements, blast radius score (0-10), security group ingress risks, and provide a clear State Gate Verdict and HCL remediation patch."
+            echo ""
+            echo "=== [INPUT TERRAFORM PLAN JSON] ==="
+            cat demos/demo1-terraform-analyzer/terraform/plan.json
+          ) | agy --model "Gemini 3.5 Flash (Low)" --dangerously-skip-permissions | tee terraform_review.md
           
           echo "# Demo 1: Terraform Plan SRE Safety Review" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

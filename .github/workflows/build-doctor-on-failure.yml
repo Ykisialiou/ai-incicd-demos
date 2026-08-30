@@ -58,9 +58,12 @@ jobs:
           echo " 🩺 Invoking Antigravity Build Doctor on live broken build log"
           echo "================================================================================"
 
-          PROMPT="A CI/CD pipeline step just failed with exit code 1. Analyze this raw build log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer."
-
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" build_output.log --dangerously-skip-permissions | tee build_diagnosis.md
+          (
+            echo "A CI/CD pipeline step just failed with exit code 1. Analyze this raw build log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer."
+            echo ""
+            echo "=== [INPUT BUILD LOG] ==="
+            cat build_output.log
+          ) | agy --model "Gemini 3.5 Flash (Low)" --dangerously-skip-permissions | tee build_diagnosis.md
 
           echo "# Demo 3: CI Build Doctor Diagnosis Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
