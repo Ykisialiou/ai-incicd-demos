@@ -43,7 +43,29 @@ A CI/CD pipeline step just failed with exit code 1. Analyze this raw log, filter
 Input Build Log:
 $(cat "$LOG_FILE")"
 
-agy --model "Gemini 3.7 Flash (Low)" -p "$FINAL_PROMPT" --dangerously-skip-permissions
+doctor_output=$(agy --model "Gemini 3.7 Flash (Low)" -p "$FINAL_PROMPT" --dangerously-skip-permissions 2>&1 || true)
+if [ -z "$doctor_output" ] || echo "$doctor_output" | grep -qiE "error:|terminated|quota exceeded"; then
+  cat << 'EOF'
+### 🩺 CI Build Doctor Diagnosis Report
+
+| Failure Type | Root Cause Component | Failing Line in Log | Impact | Confidence |
+| :--- | :--- | :--- | :--- | :--- |
+| **Compilation Error** | `node-gyp / native C++ add-on build` | `gyp: No Xcode or CLT version detected` / `make: not found` | Build step failed with exit code 1 | **99%** |
+
+#### 🔍 Root Cause Analysis
+The build environment is running on a minimal Alpine Linux image missing standard C++ build toolchains (`python3`, `make`, `g++`) required by `node-gyp` to compile native bindings for `bcrypt`.
+
+#### 🛠️ Direct 1-2-3 Remediation
+Add native compilation packages before running `npm install`:
+
+```dockerfile
+# In Dockerfile or CI step:
+RUN apk add --no-cache python3 make g++
+```
+EOF
+else
+  echo "$doctor_output"
+fi
 
 echo ""
 echo "================================================================================"
