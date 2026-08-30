@@ -17,6 +17,7 @@ resource "aws_db_instance" "production_db" {
   tags = {
     Environment = var.environment
     ManagedBy   = "Terraform"
+    Project     = "Customer360"
   }
 }
 
