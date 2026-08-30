@@ -147,41 +147,58 @@ resource "aws_db_instance" "production_db" {
 
 **Gate Verdict**: ❌ **🔴 BLOCKED (Prevent DB destruction before merge)**
 """
-    elif "trivy" in content_lower or "vulnerabilit" in content_lower or "cve-" in content_lower:
-        return """# 🛡️ Trivy Security Triage Report
+    elif "trivy" in content_lower or "vulnerabilit" in content_lower or "cve-" in content_lower or "security" in content_lower:
+        return """# 🛡️ Trivy DevSecOps AI Triage Gate: 🔴 BLOCKED (Action Required)
 
-### 🎯 Triage Summary
-- **Total Scanned Items**: 18 findings
-- **Filtered Noise (Low risk / unreachable)**: 16 items
-- **Actionable High/Critical Threats**: **2 Findings**
-- **Security Gate Decision**: ⚠️ **WARNING (Actionable Fixes Available)**
+### 🎯 Triage & Noise Reduction Summary
+- **Raw Scanned Findings**: 18 vulnerabilities & misconfigurations
+- **Filtered Low-Risk / Dev Noise**: 14 items (e.g. `zlib` in dev-dependencies, unexploitable kernel flags)
+- **Actionable Threats & Secrets**: **4 Items** (1 Secret Leak, 1 Base Image CVE, 2 Dependency Patches)
+- **Security Gate Verdict**: 🔴 **BLOCKED (Hardcoded AWS Secret Detected & Actionable Fixes Available)**
 
 ---
 
-### 🔍 Actionable Vulnerability Triage
+### 🔍 Actionable Security & Vulnerability Triage Matrix
 
-| Package | CVE ID | Severity | In-The-Wild Exploit? | Fix Available? | Recommended Action |
+| Target | Finding / Package | CVE / Rule ID | Severity | Threat Impact & Non-Obvious Nuance | Actionable Fix |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `libssl3` | `CVE-2023-0286` | 🔴 **CRITICAL** | Yes (Public PoC) | ✅ `3.0.8-r0` | Upgrade base image to `alpine:3.18+` |
-| `express` | `CVE-2022-24999` | 🟠 **HIGH** | Low | ✅ `^4.18.2` | Bump package in `package.json` |
+| `Dockerfile` | Leaked AWS Key | `aws-access-key-id` | 🔴 **CRITICAL** | **Layer History Trap**: Stored in Docker layer forever. `RUN rm` will NOT remove it! | Revoke IAM key & use BuildKit Secret Mount |
+| `Alpine OS` | `libssl3` | `CVE-2023-0286` | 🔴 **CRITICAL** | Public Buffer Overflow Exploit in OpenSSL | Upgrade base image to `node:20.11-alpine` |
+| `npm` | `express` (`qs`, `body-parser`) | `CVE-2022-24999` | 🟠 **HIGH** | **Transitive Noise**: 10 CVEs in sub-packages all fixed by 1 parent upgrade | Bump `express: ^4.18.2` |
+| `npm` | `lodash` | `CVE-2020-8203` | 🟠 **HIGH** | Prototype Pollution in `zipObjectDeep` | Bump `lodash: ^4.17.21` |
+| `npm (dev)` | `zlib` (via `archiver`) | `CVE-2023-45853` | 🟢 **SUPPRESSED** | **Fixed version: NONE**. Build-only devDependency, unreachable in production | Suppressed in CI Gate |
+| `Dockerfile` | User is Root | `AVD-DS-0002` | 🟡 **WARN** | **Permission Trap**: Simply adding `USER node` causes `EACCES` runtime crash | Add `chown /app` before `USER node` |
 
 ---
 
-### 🚀 Instant Remediation Patch
+### 🚀 Instant Remediation Diff Patch
 
-Update `Dockerfile`:
+#### 1. Fix `Dockerfile`:
 ```diff
-- FROM node:16.14-alpine
-+ FROM node:20.11-alpine
+- FROM node:16.14.0-alpine
++ FROM node:20.11.0-alpine
+
+- ENV AWS_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE"
+- ENV AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
++ # Create working directory and set proper permissions for non-root user
++ RUN mkdir -p /app && chown -R node:node /app
++ USER node
 ```
 
-Update `package.json`:
+#### 2. Fix `package.json`:
 ```diff
-- "express": "4.16.0",
-+ "express": "^4.18.2",
+  "dependencies": {
+-   "express": "4.16.0",
+-   "lodash": "4.17.15"
++   "express": "^4.18.2",
++   "lodash": "^4.17.21"
+  }
 ```
 
-**Next Steps**: Applying the base image bump automatically resolves 14 out of 16 base OS vulnerabilities.
+---
+
+**Gate Verdict**: ❌ **🔴 BLOCKED (Revoke leaked AWS IAM key and apply remediation patches)**
 """
     elif "build" in content_lower or "pipeline" in content_lower or "error" in content_lower or "gyp" in content_lower:
         return """# 🩺 CI/CD Build Doctor: Root Cause Analysis
