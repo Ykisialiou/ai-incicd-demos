@@ -1,0 +1,112 @@
+name: Demo 4 - AI Verifier Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'demos/demo4-ai-verifier-gate/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to checkout and analyze (default: main)'
+        required: true
+        default: 'main'
+      scenario:
+        description: 'Verification Scenario: all | pass | fail'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai-verifier-evaluation:
+    name: LLM-as-a-Judge Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Generate Live Terraform Plan Ground Truth
+        run: |
+          cd demos/demo1-terraform-analyzer/terraform
+          terraform init -backend=false -input=false
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > plan.json
+          echo "Generated live ground truth plan.json ($(wc -c < plan.json) bytes)"
+
+      - name: Install Antigravity CLI (agy)
+        run: |
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
+
+      - name: Configure Antigravity CLI
+        run: |
+          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
+          echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
+          echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
+
+      - name: Run Scenario 1 - Grounded AI Analysis Audit
+        if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'pass' || github.event.inputs.scenario == ''
+        env:
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo "================================================================================"
+          echo " 🧪 SCENARIO 1: Grounded AI Analysis (Accurate & Verified)"
+          echo "================================================================================"
+
+          PROMPT_1="System Instructions:
+          $(cat agent_instructions/verifier_agent/system_prompt.md)
+
+          === TASK INSTRUCTIONS ===
+          Verify candidate AI report against ground truth. Output strictly raw JSON without markdown formatting.
+
+          === [GROUND TRUTH: RAW INPUT DATA] ===
+          $(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+
+          === [AI GENERATED REPORT TO AUDIT] ===
+          $(cat demos/demo4-ai-verifier-gate/sample_valid_report.md)"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_1" --dangerously-skip-permissions | tee audit_valid.json
+          
+          echo "### Scenario 1: Grounded AI Analysis" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat audit_valid.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Run Scenario 2 - Hallucinated AI Analysis Audit
+        if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == ''
+        env:
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo "================================================================================"
+          echo " 🧪 SCENARIO 2: Hallucinated AI Analysis (Fabricated DB & Fake CVE)"
+          echo "================================================================================"
+
+          PROMPT_2="System Instructions:
+          $(cat agent_instructions/verifier_agent/system_prompt.md)
+
+          === TASK INSTRUCTIONS ===
+          Verify candidate AI report against ground truth. Output strictly raw JSON without markdown formatting.
+
+          === [GROUND TRUTH: RAW INPUT DATA] ===
+          $(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+
+          === [AI GENERATED REPORT TO AUDIT] ===
+          $(cat demos/demo4-ai-verifier-gate/sample_hallucinated_report.md)"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_2" --dangerously-skip-permissions | tee audit_hallucinated.json
+
+          echo "### Scenario 2: Hallucinated AI Analysis (Detection & Gate Block)" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat audit_hallucinated.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

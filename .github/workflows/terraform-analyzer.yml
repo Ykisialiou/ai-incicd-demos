@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'demos/demo1-terraform-analyzer/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to checkout and analyze (default: main)'
+        required: true
+        default: 'main'
 
 permissions:
   contents: read
@@ -11,39 +17,59 @@ permissions:
 
 jobs:
   terraform-ai-review:
+    name: Terraform SRE AI Safety Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Install Antigravity CLI (agy)
-        run: |
-          curl -fsSL https://antigravity.google/cli/install.sh | bash || true
-          echo "$HOME/.antigravity/bin:$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Terraform Init & Plan
-        id: tf_plan
+      - name: Generate Live Terraform Plan JSON
         run: |
           cd demos/demo1-terraform-analyzer/terraform
-          terraform init -backend=false
-          terraform plan -out=tfplan
+          terraform init -backend=false -input=false
+          terraform plan -out=tfplan -input=false
           terraform show -json tfplan > plan.json
+          echo "Generated plan.json ($(wc -c < plan.json) bytes)"
 
-      - name: Run Terraform Analyzer AI Agent (agy)
-        id: agent_analysis
-        env:
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+      - name: Install Antigravity CLI (agy)
         run: |
-          ./bin/agy \
-            --system-prompt agent_instructions/terraform_analyzer_agent/system_prompt.md \
-            --file demos/demo1-terraform-analyzer/terraform/plan.json \
-            --prompt "Analyze this Terraform plan against architecture policy and evaluate blast radius, destructive replacements, and DNS risk." \
-            --output terraform_review.md
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
+
+      - name: Configure Antigravity CLI
+        run: |
+          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
+          echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
+          echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
+
+      - name: Run AI Agent Terraform Review (agy)
+        env:
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          echo "================================================================================"
+          echo " 🤖 Invoking Antigravity SRE Agent on live plan.json"
+          echo "================================================================================"
           
-          # Append to GitHub Step Summary
+          PROMPT="System Instructions:
+          $(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
+
+          Task:
+          Perform full SRE and security analysis on this Terraform plan. Evaluate destructive replacements, security group ingress, blast radius score, and state gate decision.
+
+          Input Plan JSON:
+          $(cat demos/demo1-terraform-analyzer/terraform/plan.json)"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions | tee terraform_review.md
+          
+          echo "# Demo 1: Terraform Plan SRE Safety Review" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           cat terraform_review.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Safety Review Comment
@@ -52,10 +78,12 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const reviewBody = fs.readFileSync('terraform_review.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: reviewBody
-            });
+            if (fs.existsSync('terraform_review.md')) {
+              const reviewBody = fs.readFileSync('terraform_review.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: reviewBody
+              });
+            }
