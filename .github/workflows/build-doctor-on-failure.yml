@@ -20,15 +20,24 @@ jobs:
         id: run_build
         continue-on-error: true
         run: |
+          echo "================================================================================"
+          echo " 💥 STEP: Running intentionally broken build"
+          echo "================================================================================"
           chmod +x demos/demo3-build-failure-doctor/sample_broken_pipeline/broken_build.sh
           bash demos/demo3-build-failure-doctor/sample_broken_pipeline/broken_build.sh 2>&1 | tee build_output.log
-          exit ${PIPESTATUS[0]}
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "📊 Build exit code: $BUILD_EXIT"
+          echo "📄 Build log size: $(wc -c < build_output.log) bytes"
+          exit $BUILD_EXIT
 
       - name: Install Antigravity CLI (agy)
         if: steps.run_build.outcome == 'failure'
         run: |
+          echo "::group::Installing agy CLI"
           curl -fsSL https://antigravity.google/cli/install.sh | bash
           echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
+          echo "::endgroup::"
+          echo "✅ agy CLI installed"
 
       - name: Configure Antigravity CLI
         if: steps.run_build.outcome == 'failure'
@@ -36,8 +45,9 @@ jobs:
           mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
+          echo "✅ agy CLI configured"
 
-      - name: Run AI Build Doctor Diagnostic Agent (agy)
+      - name: "Run AI Build Doctor (AI Agent)"
         if: steps.run_build.outcome == 'failure'
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -46,24 +56,48 @@ jobs:
         run: |
           set -o pipefail
           echo "================================================================================"
-          echo " 🩺 Invoking Antigravity Build Doctor on live broken build log"
+          echo " 🩺 STEP: AI Agent Diagnosing Build Failure"
           echo "================================================================================"
 
+          echo "::group::Raw build log fed to AI"
+          cat build_output.log
+          echo "::endgroup::"
+
+          # Build prompt via temp file to keep YAML clean
           LOG_CONTENT=$(cat build_output.log)
-          PROMPT="A CI/CD pipeline step just failed with exit code 1. Analyze this raw build log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer.
+          cat > /tmp/doctor_prompt.txt <<PROMPT_EOF
+          A CI/CD pipeline step just failed with exit code 1. Analyze this raw build log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer.
 
-=== [INPUT BUILD LOG] ===
-$LOG_CONTENT"
+          === INPUT BUILD LOG ===
+          ${LOG_CONTENT}
+          PROMPT_EOF
 
+          PROMPT=$(cat /tmp/doctor_prompt.txt)
+          echo "📋 Prompt size: $(echo "$PROMPT" | wc -c) bytes"
+          echo "🤖 Calling agy (Gemini 3.5 Flash)..."
+
+          echo "::group::agy build doctor output"
           agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions < /dev/null | tee build_diagnosis.md
+          AGY_EXIT=$?
+          echo "::endgroup::"
 
-          echo "# Demo 3: CI Build Doctor Diagnosis Report" >> $GITHUB_STEP_SUMMARY
+          echo "📊 agy exit code: $AGY_EXIT"
+          echo "📄 Diagnosis output size: $(wc -c < build_diagnosis.md) bytes"
+          echo "📄 Diagnosis output lines: $(wc -l < build_diagnosis.md)"
+
+          echo "## 🩺 AI Build Doctor Diagnosis" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Raw Build Log" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -50 build_output.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### AI Diagnosis" >> $GITHUB_STEP_SUMMARY
           cat build_diagnosis.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Diagnosis Comment
         uses: actions/github-script@v7
-        if: steps.run_build.outcome == 'failure' && github.event_name == 'pull_request'
+        if: "steps.run_build.outcome == 'failure' && github.event_name == 'pull_request'"
         with:
           script: |
             const fs = require('fs');
@@ -80,5 +114,5 @@ $LOG_CONTENT"
       - name: Conclude Pipeline Failure
         if: steps.run_build.outcome == 'failure'
         run: |
-          echo "Build step failed as expected. AI Doctor diagnostics logged."
+          echo "❌ Build step failed as expected. AI Doctor diagnostics above."
           exit 1

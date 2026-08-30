@@ -18,25 +18,44 @@ jobs:
 
       - name: Install Trivy Scanner
         run: |
+          echo "::group::Installing Trivy"
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy --version
+          echo "::endgroup::"
+          echo "✅ Trivy installed"
 
       - name: Run Real Trivy Security Scan
         run: |
+          echo "================================================================================"
+          echo " 🔍 STEP: Running live Trivy filesystem scan"
+          echo "================================================================================"
           trivy fs --format json --output trivy_scan.json demos/demo2-trivy-security-analyzer/sample_app
-          echo "Generated live trivy_scan.json ($(wc -c < trivy_scan.json) bytes)"
+          SCAN_SIZE=$(wc -c < trivy_scan.json)
+          echo "✅ Generated live trivy_scan.json ($SCAN_SIZE bytes)"
+
+          echo "::group::Raw Trivy JSON output"
+          cat trivy_scan.json
+          echo "::endgroup::"
+
+          echo "### 🔍 Trivy Scan Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- Scan file size: $SCAN_SIZE bytes" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Antigravity CLI (agy)
         run: |
+          echo "::group::Installing agy CLI"
           curl -fsSL https://antigravity.google/cli/install.sh | bash
           echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
+          echo "::endgroup::"
+          echo "✅ agy CLI installed"
 
       - name: Configure Antigravity CLI
         run: |
           mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
+          echo "✅ agy CLI configured"
 
-      - name: Run AI Agent Security Triage (agy)
+      - name: "Run AI Security Triage (AI Agent)"
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -44,18 +63,33 @@ jobs:
         run: |
           set -o pipefail
           echo "================================================================================"
-          echo " 🤖 Invoking Antigravity Security Agent on live Trivy Scan"
+          echo " 🤖 STEP: AI Agent Triaging Trivy Security Scan Results"
           echo "================================================================================"
 
+          # Build prompt via temp file to keep YAML clean
           SCAN_CONTENT=$(cat trivy_scan.json)
-          PROMPT="Triage this raw Trivy security scan JSON. Filter noise and unexploitable CVEs, identify root-cause base image and library updates, highlight actionable CVEs, and generate copy-paste remediation diffs.
+          cat > /tmp/trivy_prompt.txt <<PROMPT_EOF
+          Triage this raw Trivy security scan JSON. Filter noise and unexploitable CVEs, identify root-cause base image and library updates, highlight actionable CVEs with severity, and generate copy-paste remediation diffs.
 
-=== [INPUT TRIVY SCAN JSON] ===
-$SCAN_CONTENT"
+          === INPUT TRIVY SCAN JSON ===
+          ${SCAN_CONTENT}
+          PROMPT_EOF
 
+          PROMPT=$(cat /tmp/trivy_prompt.txt)
+          echo "📋 Prompt size: $(echo "$PROMPT" | wc -c) bytes"
+          echo "🤖 Calling agy (Gemini 3.5 Flash)..."
+
+          echo "::group::agy security triage output"
           agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions < /dev/null | tee security_triage.md
+          AGY_EXIT=$?
+          echo "::endgroup::"
 
-          echo "# Demo 2: Trivy DevSecOps Security AI Triage" >> $GITHUB_STEP_SUMMARY
+          echo "📊 agy exit code: $AGY_EXIT"
+          echo "📄 Triage output size: $(wc -c < security_triage.md) bytes"
+          echo "📄 Triage output lines: $(wc -l < security_triage.md)"
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🤖 AI Security Triage Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           cat security_triage.md >> $GITHUB_STEP_SUMMARY
 
