@@ -43,8 +43,9 @@ jobs:
       - name: Run AI Verifier Gate (LLM-as-a-Judge)
         id: run_verifier
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
           SCENARIO_INPUT: ${{ github.event.inputs.scenario || 'all' }}
         run: |
           SCENARIO="$SCENARIO_INPUT"

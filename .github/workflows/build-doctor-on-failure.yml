@@ -38,8 +38,9 @@ jobs:
       - name: Run Demo 3 - Build Doctor Failure Analyzer (agy)
         id: run_build_doctor
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           chmod +x demos/demo3-build-failure-doctor/run_demo.sh
           ./demos/demo3-build-failure-doctor/run_demo.sh | tee build_diagnosis.md

@@ -15,6 +15,10 @@ HALLUCINATED_REPORT="$SCRIPT_DIR/sample_hallucinated_report.md"
 
 MODE="${1:-all}" # 'all', 'pass', or 'fail'
 
+export GEMINI_API_KEY="${GEMINI_API_KEY:-${AGY_API_KEY:-}}"
+export AGY_API_KEY="${AGY_API_KEY:-${GEMINI_API_KEY:-}}"
+export GOOGLE_API_KEY="${GOOGLE_API_KEY:-${GEMINI_API_KEY:-}}"
+
 # Ensure agy headless config exists
 mkdir -p "$HOME/.gemini/antigravity-cli" "$HOME/.antigravity" 2>/dev/null || true
 echo '{"modelProvider":"gemini"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true

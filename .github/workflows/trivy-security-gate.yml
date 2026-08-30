@@ -38,8 +38,9 @@ jobs:
       - name: Run Demo 2 - Trivy Security Triage Agent (agy)
         id: security_agent
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
-          AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           chmod +x demos/demo2-trivy-security-analyzer/run_demo.sh
           ./demos/demo2-trivy-security-analyzer/run_demo.sh | tee security_triage.md
