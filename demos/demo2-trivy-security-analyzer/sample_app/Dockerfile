@@ -1,3 +1,7 @@
+# ------------------------------------------------------------------------------
+# DEMO 2: Vulnerable Container Image (PR #3)
+# Scanned with Trivy -> Triaged by AI Security Agent
+# ------------------------------------------------------------------------------
 # Outdated Node.js Alpine base image with known vulnerabilities (CVE-2023-0286 in libssl3, etc.)
 FROM node:16.14.0-alpine
 
