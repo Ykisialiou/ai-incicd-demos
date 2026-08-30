@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   trivy-ai-triage:
+    name: Trivy Security AI Triage Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -24,9 +25,14 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch || github.ref }}
 
-      - name: Install Trivy
+      - name: Install Trivy Scanner
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run Real Trivy Security Scan
+        run: |
+          trivy fs --format json --output trivy_scan.json demos/demo2-trivy-security-analyzer/sample_app
+          echo "Generated live trivy_scan.json ($(wc -c < trivy_scan.json) bytes)"
 
       - name: Install Antigravity CLI (agy)
         run: |
@@ -39,16 +45,29 @@ jobs:
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
 
-      - name: Run Demo 2 - Live Trivy Scan & Triage
+      - name: Run AI Agent Security Triage (agy)
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
-          chmod +x demos/demo2-trivy-security-analyzer/run_demo.sh
-          ./demos/demo2-trivy-security-analyzer/run_demo.sh | tee security_triage.md
+          echo "================================================================================"
+          echo " 🤖 Invoking Antigravity Security Agent on live Trivy Scan"
+          echo "================================================================================"
 
-          # Append real agent output to GitHub Step Summary
+          PROMPT="System Instructions:
+          $(cat agent_instructions/trivy_security_agent/system_prompt.md)
+
+          Task:
+          Triage this raw Trivy security scan. Filter noise, identify root-cause fixes (like base image updates), highlight actionable CVEs, and generate copy-paste remediation diffs.
+
+          Input Trivy Scan JSON:
+          $(cat trivy_scan.json)"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions | tee security_triage.md
+
+          echo "# Demo 2: Trivy DevSecOps Security AI Triage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           cat security_triage.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Security Triage Comment

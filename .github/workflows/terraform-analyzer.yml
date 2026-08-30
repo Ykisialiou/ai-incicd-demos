@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   terraform-ai-review:
+    name: Terraform SRE AI Safety Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -26,6 +27,14 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+
+      - name: Generate Live Terraform Plan JSON
+        run: |
+          cd demos/demo1-terraform-analyzer/terraform
+          terraform init -backend=false -input=false
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > plan.json
+          echo "Generated plan.json ($(wc -c < plan.json) bytes)"
 
       - name: Install Antigravity CLI (agy)
         run: |
@@ -38,16 +47,29 @@ jobs:
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
 
-      - name: Run Demo 1 - Live Terraform Analysis
+      - name: Run AI Agent Terraform Review (agy)
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
-          chmod +x demos/demo1-terraform-analyzer/run_demo.sh
-          ./demos/demo1-terraform-analyzer/run_demo.sh | tee terraform_review.md
+          echo "================================================================================"
+          echo " 🤖 Invoking Antigravity SRE Agent on live plan.json"
+          echo "================================================================================"
           
-          # Append real agent output to GitHub Step Summary
+          PROMPT="System Instructions:
+          $(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
+
+          Task:
+          Perform full SRE and security analysis on this Terraform plan. Evaluate destructive replacements, security group ingress, blast radius score, and state gate decision.
+
+          Input Plan JSON:
+          $(cat demos/demo1-terraform-analyzer/terraform/plan.json)"
+
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions | tee terraform_review.md
+          
+          echo "# Demo 1: Terraform Plan SRE Safety Review" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           cat terraform_review.md >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR Safety Review Comment
