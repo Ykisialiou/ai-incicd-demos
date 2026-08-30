@@ -1,7 +1,6 @@
 # ------------------------------------------------------------------------------
-# DEMO 1: Production Infrastructure Change Set (PR #1)
-# Demonstrates rich change diversity: Critical Destruction, Security Tightening,
-# CloudFront Distribution Updates, DNS Records, and Safe Metadata Tagging.
+# DEMO 1: Production Infrastructure Change Set (PR #2)
+# Triggering Terraform SRE Safety Gate
 # ------------------------------------------------------------------------------
 
 # 1. 🔴 CRITICAL RISK: Changing 'identifier' forces full database drop & recreation!
