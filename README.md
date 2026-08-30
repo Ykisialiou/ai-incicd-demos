@@ -36,14 +36,20 @@ ai-incicd-demos/
 │   │   ├── README.md
 │   │   ├── sample_app/                             # Outdated Dockerfile & package manifests
 │   │   └── run_demo.sh
-│   └── demo3-build-failure-doctor/                 # Demo 3: Broken CI/CD Pipeline & Log Root Cause Analyzer
+│   ├── demo3-build-failure-doctor/                 # Demo 3: Broken CI/CD Pipeline & Log Root Cause Analyzer
+│   │   ├── README.md
+│   │   ├── sample_broken_pipeline/                 # Realistic failing build project (300+ line log)
+│   │   └── run_demo.sh
+│   └── demo4-ai-verifier-gate/                     # Demo 4: LLM-as-a-Judge Anti-Hallucination Gate
 │       ├── README.md
-│       ├── sample_broken_pipeline/                 # Realistic failing build project (300+ line log)
+│       ├── sample_valid_report.md
+│       ├── sample_hallucinated_report.md
 │       └── run_demo.sh
 └── .github/workflows/                              # Production GitHub Actions Workflows
     ├── terraform-analyzer.yml                      # Pre-apply Terraform AI safety gate
     ├── trivy-security-gate.yml                     # DevSecOps vulnerability triage & patch generator
-    └── build-doctor-on-failure.yml                 # Auto-diagnosis on step failure
+    ├── build-doctor-on-failure.yml                 # Auto-diagnosis on step failure
+    └── ai-verifier-gate.yml                        # Two-pass AI hallucination & fact-checking gate
 ```
 
 ---
@@ -75,6 +81,15 @@ ai-incicd-demos/
 - **Run Locally**:
   ```bash
   ./demos/demo3-build-failure-doctor/run_demo.sh
+  ```
+
+### 4. [Demo 4: AI Verifier & Anti-Hallucination Gate](./demos/demo4-ai-verifier-gate/)
+- **Trigger**: Manual `workflow_dispatch` or PR verification step.
+- **Problem**: Autonomous AI agents risk hallucinating non-existent resources, false vulnerabilities, or dangerous commands.
+- **AI Solution**: A two-pass independent **LLM-as-a-Judge** verifier audits candidate AI reports against raw ground truth data (`plan.json` / logs), scores factual accuracy, and blocks ungrounded output.
+- **Run Locally**:
+  ```bash
+  ./demos/demo4-ai-verifier-gate/run_demo.sh
   ```
 
 ---

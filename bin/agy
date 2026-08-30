@@ -46,9 +46,40 @@ def call_gemini_api(api_key: str, model: str, system_instruction: str, user_cont
 
 def offline_simulation(system_instruction: str, user_content: str) -> str:
     sys.stderr.write("\n[NOTE] Running agy in Demo Simulation Mode.\n\n")
-    content_lower = user_content.lower() + (system_instruction.lower() if system_instruction else "")
-    
-    if "cab" in content_lower or "change management" in content_lower or "email" in content_lower:
+    user_lower = user_content.lower()
+    system_lower = system_instruction.lower() if system_instruction else ""
+    if "verifier" in system_lower or "verifier" in user_lower or "hallucination" in system_lower or "judge" in system_lower or "auditor" in system_lower:
+        if "hallucination_scenario" in user_lower or "hallucinated" in user_lower or "payment_gateway" in user_lower or "fake" in user_lower or "apocalypse" in user_lower:
+            return json.dumps({
+                "verification_passed": False,
+                "factual_accuracy_score": 38,
+                "audit_verdict": "REJECTED",
+                "hallucinations_detected": [
+                    "Fabricated resource: 'aws_rds_cluster.payment_gateway' was claimed as DESTROYED, but does not exist in raw plan.json.",
+                    "Fabricated CVE: Cited 'CVE-2024-99999 (CVSS 9.8)' which does not exist in raw vulnerability data.",
+                    "Invented action: Claimed 'aws_s3_bucket.data_lake' was deleted with total data loss, whereas raw plan shows only additive in-place metadata tag updates."
+                ],
+                "inconsistencies": [
+                    "Blast Radius score artificially exaggerated to 10.0/10 based on non-existent infrastructure components."
+                ],
+                "verified_claims_count": 2,
+                "hallucinated_claims_count": 3,
+                "confidence_rating": "HIGH",
+                "summary": "❌ Audit REJECTED: Candidate analysis contains 3 critical hallucinations, ungrounded CVE citations, and fabricated destructive actions."
+            }, indent=2)
+        else:
+            return json.dumps({
+                "verification_passed": True,
+                "factual_accuracy_score": 99,
+                "audit_verdict": "APPROVED",
+                "hallucinations_detected": [],
+                "inconsistencies": [],
+                "verified_claims_count": 5,
+                "hallucinated_claims_count": 0,
+                "confidence_rating": "HIGH",
+                "summary": "✅ Audit APPROVED: All 5 infrastructure change claims (RDS rename replacement, Route53 DNS addition, Security Group ingress modification) factually match ground truth plan.json."
+            }, indent=2)
+    elif "cab" in content_lower or "change management" in content_lower or "email" in content_lower:
         return """Subject: [RFC - Change Request] Production Infrastructure Release: Customer DB & Analytics (2026-08-31) - Risk Level: 🔴 CRITICAL
 
 Hi Change Advisory Board (CAB) & SRE Team,

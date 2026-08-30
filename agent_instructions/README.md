@@ -9,6 +9,7 @@ This directory contains production-grade system prompts, operational rules, and 
 | **[Terraform Analyzer Agent](./terraform_analyzer_agent/)** | Pull Request / `terraform plan` | Detect destructive replacements, data loss, security misconfigurations (e.g. `0.0.0.0/0`), and assess blast radius. | PR Review Comment & Pipeline Safety Gate |
 | **[Trivy Security Agent](./trivy_security_agent/)** | Vulnerability Scan / Image Build | Triage CVE noise, contextualize reachability/exploitability, provide instant copy-paste patch diffs. | Security Gate Decision & PR Triage Table |
 | **[Build Doctor Agent](./build_doctor_agent/)** | CI Job Failure / Step Exit Code != 0 | Ingest massive failed build logs (500+ lines), pinpoint the exact failing line, root cause, and remediation command. | Incident / PR Comment & Fix Instructions |
+| **[Verifier Agent (LLM-as-a-Judge)](./verifier_agent/)** | Pre-publication / Gate Evaluation | Audit primary agent reports against raw AST/logs, detect hallucinations, and score factual accuracy. | Strict JSON Audit Verdict & CI Gate Block |
 
 ---
 
