@@ -1,4 +1,4 @@
-name: Demo 4 - AI Verifier & Anti-Hallucination Gate
+name: "Demo 4 - AI Verifier and Anti-Hallucination Gate"
 
 on:
   pull_request:
