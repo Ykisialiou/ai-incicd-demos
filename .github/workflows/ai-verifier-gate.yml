@@ -1,10 +1,20 @@
 name: Demo 4 - AI Verifier Safety Gate
 
-'on':
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'demos/demo4-ai-verifier-gate/**'
   pull_request:
     paths:
       - 'demos/demo4-ai-verifier-gate/**'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to analyze'
+        required: false
+        default: 'main'
 
 permissions:
   contents: read
@@ -17,8 +27,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch || github.ref }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -29,7 +37,6 @@ jobs:
           terraform init -backend=false -input=false
           terraform plan -out=tfplan -input=false
           terraform show -json tfplan > plan.json
-          echo "Generated live plan.json ($(wc -c < plan.json) bytes)"
 
       - name: Install Antigravity CLI (agy)
         run: |
@@ -42,7 +49,8 @@ jobs:
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
 
-      - name: Stage 1 - Primary AI Agent (Live Analysis)
+      - name: Stage 1 - Primary AI Agent (Generate Analysis Live)
+        id: stage1
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -50,18 +58,19 @@ jobs:
         run: |
           set -o pipefail
           echo "================================================================================"
-          echo " 🤖 STAGE 1: Primary AI Agent Analyzing Terraform Plan"
+          echo " 🤖 STAGE 1: Primary AI Agent Analyzing Plan"
           echo "================================================================================"
-
+          
           PLAN_CONTENT=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
-          PROMPT_STAGE1="Analyze this Terraform plan and summarize the planned infrastructure changes, resource replacements, and security risks.
+          PROMPT="Perform a comprehensive SRE and Security review of the following Terraform plan JSON. Evaluate destructive replacements, blast radius score (0-10), security group ingress risks, and provide a clear State Gate Verdict and HCL remediation patch.
 
 === [INPUT TERRAFORM PLAN JSON] ===
 $PLAN_CONTENT"
 
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_STAGE1" --dangerously-skip-permissions < /dev/null | tee stage1_ai_analysis.md
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions < /dev/null | tee stage1_ai_analysis.md
 
       - name: Stage 2 - Verifier AI Agent (LLM-as-a-Judge Audits Stage 1 Live)
+        id: stage2
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
@@ -71,22 +80,37 @@ $PLAN_CONTENT"
           echo "================================================================================"
           echo " 🛡️ STAGE 2: Verifier Agent (LLM-as-a-Judge) Auditing Stage 1 Report"
           echo "================================================================================"
+          
+          GROUND_TRUTH=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+          STAGE1_OUTPUT=$(cat stage1_ai_analysis.md)
+          
+          PROMPT="You are an AI Safety Verifier & Anti-Hallucination Gate (LLM-as-a-Judge).
+Your task is to independently audit the candidate AI report against the ground-truth Terraform plan JSON.
 
-          PLAN_CONTENT=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
-          REPORT_CONTENT=$(cat stage1_ai_analysis.md)
+Verify:
+1. Hallucination Check: Are any resource changes invented that do not exist in the plan?
+2. Blast Radius Score Accuracy: Is the score justified given destructive replacement of production database?
+3. Omission Check: Did the candidate report fail to mention the critical database destroy/recreate action?
 
-          PROMPT_STAGE2="Act as an impartial AI Verifier and Auditor (LLM-as-a-Judge). Verify the candidate report (Stage 1 Report) against the ground truth (plan.json). Output strictly raw JSON with keys: verification_passed (bool), factual_accuracy_score (0-100), audit_verdict (APPROVED or REJECTED), hallucinations_detected (list of strings), inconsistencies (list of strings), summary (string).
+Output a JSON object with:
+{
+  \"audit_status\": \"PASS\" | \"FAIL\",
+  \"hallucination_detected\": false | true,
+  \"omission_detected\": false | true,
+  \"confidence_score\": 0.0 - 1.0,
+  \"findings\": [\"finding 1\", ...],
+  \"verdict_summary\": \"Summary explanation\"
+}
 
-=== [GROUND TRUTH: RAW INPUT DATA] ===
-$PLAN_CONTENT
+=== [GROUND TRUTH TERRAFORM PLAN JSON] ===
+$GROUND_TRUTH
 
-=== [AI GENERATED REPORT TO AUDIT (STAGE 1 REPORT)] ===
-$REPORT_CONTENT"
+=== [CANDIDATE AI REPORT (STAGE 1)] ===
+$STAGE1_OUTPUT"
 
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_STAGE2" --dangerously-skip-permissions < /dev/null | tee stage2_audit_verdict.json
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions < /dev/null | tee stage2_audit_verdict.json
 
       - name: Publish 2-Stage Verification Results to Step Summary
-        if: always()
         run: |
           echo "# Demo 4: 2-Stage AI Verifier & Anti-Hallucination Gate" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

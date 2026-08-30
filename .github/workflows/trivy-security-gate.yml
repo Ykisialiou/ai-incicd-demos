@@ -1,14 +1,20 @@
 name: Demo 2 - Trivy DevSecOps Security Triage
 
-'on':
+on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - 'demos/demo2-trivy-security-analyzer/**'
   pull_request:
     paths:
       - 'demos/demo2-trivy-security-analyzer/**'
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to analyze'
+        required: false
+        default: 'main'
 
 permissions:
   contents: read
@@ -21,16 +27,17 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch || github.ref }}
 
-      - name: Install Trivy Scanner
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.2
+        with:
+          version: 'latest'
 
       - name: Run Real Trivy Security Scan
+        id: trivy_scan
         run: |
-          trivy fs --format json --output trivy_scan.json demos/demo2-trivy-security-analyzer/sample_app
+          cd demos/demo2-trivy-security-analyzer
+          trivy fs --format json --output trivy_scan.json sample_app
           echo "Generated live trivy_scan.json ($(wc -c < trivy_scan.json) bytes)"
 
       - name: Install Antigravity CLI (agy)
@@ -52,18 +59,24 @@ jobs:
         run: |
           set -o pipefail
           echo "================================================================================"
-          echo " 🤖 Invoking Antigravity Security Agent on live Trivy Scan"
+          echo " 🛡️ Invoking Antigravity Security Agent on live trivy_scan.json"
           echo "================================================================================"
+          
+          SCAN_CONTENT=$(cat demos/demo2-trivy-security-analyzer/trivy_scan.json)
+          PROMPT="Triage the following raw Trivy security scan. 
+Filter noise, identify root-cause fixes (like base image updates), highlight actionable CVEs and hardcoded secrets, and generate copy-paste remediation diffs.
 
-          SCAN_CONTENT=$(cat trivy_scan.json)
-          PROMPT="Triage this raw Trivy security scan JSON. Filter noise and unexploitable CVEs, identify root-cause base image and library updates, highlight actionable CVEs, and generate copy-paste remediation diffs.
+Structure the response with 3 clear sections:
+1. 📊 Raw Trivy Scanner Output Summary
+2. 🧠 AI Agent Noise Reduction & Triage Matrix
+3. 🚀 Instant Remediation Diff Patch for Dockerfile and package.json
 
 === [INPUT TRIVY SCAN JSON] ===
 $SCAN_CONTENT"
 
           agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT" --dangerously-skip-permissions < /dev/null | tee security_triage.md
-
-          echo "# Demo 2: Trivy DevSecOps Security AI Triage" >> $GITHUB_STEP_SUMMARY
+          
+          echo "# Demo 2: Trivy DevSecOps Security Triage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           cat security_triage.md >> $GITHUB_STEP_SUMMARY
 
