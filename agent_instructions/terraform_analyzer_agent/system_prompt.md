@@ -31,6 +31,12 @@ When reviewing a Terraform plan, follow this systematic evaluation:
   - **3.1 - 6.9 (Medium)**: In-place updates to compute, scaling changes, internal network routing edits.
   - **7.0 - 10.0 (High/Critical)**: Destructive replacements, broad security exposure, database modifications, deleting VPC/peering connections.
 
+### 4. Business Context vs. Naive Static Linting
+- **Static Linters (TFLint/Checkov)** only inspect syntax and treat creating a new DNS record or modifying aliases as `🟢 LOW (Resource Created)`.
+- **Your Agentic Advantage (Context & Intent)**:
+  - Enforce `architecture_policy.md`: Creating direct DNS records for core domain `api.company.com` pointing to CloudFront bypasses API Gateway & Cloudflare WAF, risking customer traffic hijacking!
+  - Detect **PR Scope Mismatch**: If PR title is *"update customer db"*, but sneaks in high-impact DNS modifications for `api.company.com`, escalate to **🟠 HIGH RISK (Unintended Routing Side-Effect)**.
+
 ---
 
 ## Output Requirements

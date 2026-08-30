@@ -127,18 +127,27 @@ Generated automatically by Antigravity CI/CD Agent (agy)."""
 
 ### 📋 Engineering Change Matrix (Fast-Scan for Team Leads & Release Managers)
 
-| Resource | Action | Risk Level | Reason & Production Impact |
-| :--- | :--- | :--- | :--- |
-| `aws_db_instance.production_db` | 💥 **REPLACE (DESTROY -> CREATE)** | 🔴 **CRITICAL (9.5/10)** | Renaming DB identifier forces **DROP & RECREATE** of production DB cluster! |
-| `aws_cloudfront_distribution.cdn` | 🔄 **UPDATE** | 🟡 **MEDIUM (5.0/10)** | Added domain alias `api.company.com`. Edge distribution propagation takes ~5-15 mins. |
-| `aws_security_group.app_ingress` | 🔄 **UPDATE** | 🟡 **WARN (4.0/10)** | Ingress tightened (`0.0.0.0/0` ➔ `10.0.0.0/16:443`). Verify no external traffic is dropped! |
-| `aws_route53_record.api_dns` | ✨ **CREATE** | 🟢 **LOW (2.0/10)** | Safe additive DNS A-record pointing to CloudFront distribution. |
-| `aws_s3_bucket.data_lake` | 🔄 **UPDATE** | 🟢 **SAFE (1.0/10)** | In-place metadata tags added (`CostCenter`, `Owner`, `ComplianceScope`). Zero downtime. |
+| Resource | Action | Static Linter Verdict | AI Agent Contextual Verdict | Reason & Production Impact |
+| :--- | :--- | :--- | :--- | :--- |
+| `aws_db_instance.production_db` | 💥 **REPLACE** | 🟡 `Change` | 🔴 **CRITICAL (9.5/10)** | Renaming DB identifier forces **DROP & RECREATE** of production DB cluster! |
+| `aws_route53_record.api_dns` | ✨ **CREATE** | 🟢 `Low (Add)` | 🟠 **HIGH (7.5/10)** | ⚠️ **Policy & Scope Hazard**: Pointing `api.company.com` directly to CloudFront bypasses API Gateway & WAF. Also unrelated to PR title! |
+| `aws_cloudfront_distribution.cdn` | 🔄 **UPDATE** | 🟡 `Change` | 🟡 **MEDIUM (5.0/10)** | Added domain alias `api.company.com`. Edge distribution sync takes ~5-15 mins. |
+| `aws_security_group.app_ingress` | 🔄 **UPDATE** | 🟢 `Pass` | 🟡 **WARN (4.0/10)** | Ingress tightened (`0.0.0.0/0` ➔ `10.0.0.0/16:443`). Verify no external traffic is dropped! |
+| `aws_s3_bucket.data_lake` | 🔄 **UPDATE** | 🟢 `Pass` | 🟢 **SAFE (1.0/10)** | In-place metadata tags added (`CostCenter`, `Owner`, `ComplianceScope`). Zero downtime. |
+
+---
+
+### 🧠 Why Static Linting Fails Here (The Agentic Advantage)
+> **Static Linters (TFLint/Checkov)** see `aws_route53_record.api_dns` as a harmless additive resource (`🟢 LOW`).  
+> **The AI Agent** understands **Architecture Policy & Business Context**:
+> 1. `api.company.com` is your core production API domain — pointing it directly to CloudFront bypasses your API Gateway and DDoS WAF layer.
+> 2. **PR Scope Creep**: The PR claims to be a *"customer DB update"*, but silently sneaks in critical DNS traffic redirection.
 
 ---
 
 ### 🚨 Critical Alerts & Hazards
 - 💥 **DESTRUCTIVE REPLACEMENT DETECTED**: `aws_db_instance.production_db` will be **DESTROYED AND RECREATED**. Severe data loss and outage risk!
+- 🌐 **DNS TRAFFIC REDIRECTION**: `aws_route53_record.api_dns` reroutes production `api.company.com` traffic directly to CloudFront.
 - ⏱️ **EDGE PROPAGATION LATENCY**: `aws_cloudfront_distribution.cdn` requires 5-15 mins for global edge sync and ACM certificate validation.
 - 🔒 **SECURITY GROUP TIGHTENING**: `aws_security_group.app_ingress` restricts traffic to `10.0.0.0/16`. Ensure all client services are inside VPC.
 
