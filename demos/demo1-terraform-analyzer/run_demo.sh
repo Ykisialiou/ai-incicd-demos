@@ -98,10 +98,7 @@ echo ""
 echo "Step 2: Invoking Terraform Analyzer Agent with plan JSON..."
 echo "--------------------------------------------------------------------------------"
 
-CLI_CMD="agy"
-if ! command -v agy &>/dev/null; then
-  CLI_CMD="$PROJECT_ROOT/bin/agy"
-fi
+CLI_CMD="$PROJECT_ROOT/bin/agy"
 
 SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/system_prompt.md"
 

@@ -34,10 +34,7 @@ echo "--------------------------------------------------------------------------
 
 SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/build_doctor_agent/system_prompt.md"
 
-CLI_CMD="agy"
-if ! command -v agy &>/dev/null; then
-  CLI_CMD="$PROJECT_ROOT/bin/agy"
-fi
+CLI_CMD="$PROJECT_ROOT/bin/agy"
 
 cat "$LOG_FILE" | $CLI_CMD \
   --system-prompt "$SYSTEM_PROMPT" \

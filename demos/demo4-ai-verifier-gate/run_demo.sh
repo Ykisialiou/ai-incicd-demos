@@ -8,10 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-CLI_CMD="agy"
-if ! command -v agy &>/dev/null; then
-  CLI_CMD="$PROJECT_ROOT/bin/agy"
-fi
+CLI_CMD="$PROJECT_ROOT/bin/agy"
 
 SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/verifier_agent/system_prompt.md"
 GROUND_TRUTH_TF="$PROJECT_ROOT/demos/demo1-terraform-analyzer/terraform/plan.json"

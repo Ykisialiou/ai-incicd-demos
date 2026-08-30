@@ -97,10 +97,7 @@ echo ""
 echo "Step 2: Invoking Trivy Security Agent to triage findings..."
 echo "--------------------------------------------------------------------------------"
 
-CLI_CMD="agy"
-if ! command -v agy &>/dev/null; then
-  CLI_CMD="$PROJECT_ROOT/bin/agy"
-fi
+CLI_CMD="$PROJECT_ROOT/bin/agy"
 
 SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/trivy_security_agent/system_prompt.md"
 
