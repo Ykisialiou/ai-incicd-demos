@@ -1,0 +1,65 @@
+name: Trivy DevSecOps AI Triage Gate
+
+on:
+  pull_request:
+    paths:
+      - '**/Dockerfile'
+      - '**/package.json'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  trivy-ai-triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Antigravity CLI (agy)
+        run: |
+          curl -fsSL https://antigravity.google/cli/install.sh | bash || true
+          echo "$HOME/.antigravity/bin:$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'demos/demo2-trivy-security-analyzer/sample_app'
+          format: 'json'
+          output: 'trivy_report.json'
+
+      - name: Run Trivy Security AI Agent (agy)
+        id: security_agent
+        env:
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          CLI_CMD="agy"
+          if ! command -v agy &>/dev/null; then
+            CLI_CMD="./bin/agy"
+          fi
+
+          cat trivy_report.json | $CLI_CMD \
+            --system-prompt agent_instructions/trivy_security_agent/system_prompt.md \
+            --prompt "Triage this raw Trivy vulnerability scan. Filter out unexploitable noise and provide concise remediation patches." \
+            --output security_triage.md
+
+          # Append to GitHub Step Summary
+          cat security_triage.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Post PR Security Triage Comment
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const reviewBody = fs.readFileSync('security_triage.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: reviewBody
+            });

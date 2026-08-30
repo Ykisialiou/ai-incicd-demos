@@ -1,0 +1,57 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.14.4",
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.production_db",
+      "type": "aws_db_instance",
+      "name": "production_db",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "identifier": "production-customer-db-v1",
+          "allocated_storage": 20,
+          "engine": "postgres",
+          "instance_class": "db.t3.medium"
+        },
+        "after": {
+          "identifier": "production-customer-db-v2",
+          "allocated_storage": 20,
+          "engine": "postgres",
+          "instance_class": "db.t3.medium",
+          "skip_final_snapshot": true
+        }
+      }
+    },
+    {
+      "address": "aws_security_group.allow_ssh",
+      "type": "aws_security_group",
+      "name": "allow_ssh",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "name": "allow_ssh_from_internet",
+          "ingress": [
+            {
+              "cidr_blocks": ["0.0.0.0/0"],
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.data_lake",
+      "type": "aws_s3_bucket",
+      "name": "data_lake",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "bucket": "company-production-data-lake-raw"
+        }
+      }
+    }
+  ]
+}

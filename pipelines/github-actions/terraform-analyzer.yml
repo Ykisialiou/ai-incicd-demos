@@ -1,0 +1,67 @@
+name: Terraform AI Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'demos/demo1-terraform-analyzer/terraform/**'
+      - '**/*.tf'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform-ai-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install Antigravity CLI (agy)
+        run: |
+          curl -fsSL https://antigravity.google/cli/install.sh | bash || true
+          echo "$HOME/.antigravity/bin:$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Terraform Init & Plan
+        id: tf_plan
+        run: |
+          cd demos/demo1-terraform-analyzer/terraform
+          terraform init -backend=false
+          terraform plan -out=tfplan
+          terraform show -json tfplan > plan.json
+
+      - name: Run Terraform Analyzer AI Agent (agy)
+        id: agent_analysis
+        env:
+          AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
+        run: |
+          # Use installed agy CLI or fallback runner
+          CLI_CMD="agy"
+          if ! command -v agy &>/dev/null; then
+            CLI_CMD="./bin/agy"
+          fi
+
+          cat demos/demo1-terraform-analyzer/terraform/plan.json | $CLI_CMD \
+            --system-prompt agent_instructions/terraform_analyzer_agent/system_prompt.md \
+            --prompt "Analyze this Terraform plan for destructive replacements and security misconfigurations." \
+            --output terraform_review.md
+          
+          # Append to GitHub Step Summary
+          cat terraform_review.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Post PR Safety Review Comment
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const reviewBody = fs.readFileSync('terraform_review.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: reviewBody
+            });
