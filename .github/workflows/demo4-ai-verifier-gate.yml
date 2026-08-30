@@ -10,18 +10,14 @@ on:
         description: 'Branch to checkout and analyze (default: main)'
         required: true
         default: 'main'
-      scenario:
-        description: 'Verification Scenario: all | pass | fail'
-        required: false
-        default: 'all'
 
 permissions:
   contents: read
   pull-requests: write
 
 jobs:
-  ai-verifier-evaluation:
-    name: LLM-as-a-Judge Audit
+  two-stage-ai-verification:
+    name: 2-Stage AI Generation & Verifier Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -32,13 +28,13 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Generate Live Terraform Plan Ground Truth
+      - name: Generate Live Terraform Plan JSON
         run: |
           cd demos/demo1-terraform-analyzer/terraform
           terraform init -backend=false -input=false
           terraform plan -out=tfplan -input=false
           terraform show -json tfplan > plan.json
-          echo "Generated live ground truth plan.json ($(wc -c < plan.json) bytes)"
+          echo "Generated live plan.json ($(wc -c < plan.json) bytes)"
 
       - name: Install Antigravity CLI (agy)
         run: |
@@ -51,62 +47,65 @@ jobs:
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.gemini/antigravity-cli/settings.json
           echo '{"modelProvider":"gemini","model":"Gemini 3.5 Flash (Low)","defaultModel":"Gemini 3.5 Flash (Low)"}' > ~/.antigravity/settings.json
 
-      - name: Run Scenario 1 - Grounded AI Analysis Audit
-        if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'pass' || github.event.inputs.scenario == ''
+      - name: Stage 1 - Primary AI Agent (Live Analysis)
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           echo "================================================================================"
-          echo " 🧪 SCENARIO 1: Grounded AI Analysis (Accurate & Verified)"
+          echo " 🤖 STAGE 1: Primary AI Agent Analyzing Terraform Plan"
           echo "================================================================================"
 
-          PROMPT_1="System Instructions:
-          $(cat agent_instructions/verifier_agent/system_prompt.md)
+          PROMPT_STAGE1="System Instructions:
+          $(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
 
-          === TASK INSTRUCTIONS ===
-          Verify candidate AI report against ground truth. Output strictly raw JSON without markdown formatting.
+          Task:
+          Analyze this Terraform plan and summarize the key infrastructure changes and security posture.
 
-          === [GROUND TRUTH: RAW INPUT DATA] ===
-          $(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+          Input Plan JSON:
+          $(cat demos/demo1-terraform-analyzer/terraform/plan.json)"
 
-          === [AI GENERATED REPORT TO AUDIT] ===
-          $(cat demos/demo4-ai-verifier-gate/sample_valid_report.md)"
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_STAGE1" --dangerously-skip-permissions | tee stage1_ai_analysis.md
 
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_1" --dangerously-skip-permissions | tee audit_valid.json
-          
-          echo "### Scenario 1: Grounded AI Analysis" >> $GITHUB_STEP_SUMMARY
-          echo '```json' >> $GITHUB_STEP_SUMMARY
-          cat audit_valid.json >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-      - name: Run Scenario 2 - Hallucinated AI Analysis Audit
-        if: github.event.inputs.scenario == 'all' || github.event.inputs.scenario == 'fail' || github.event.inputs.scenario == ''
+      - name: Stage 2 - Verifier AI Agent (LLM-as-a-Judge Audits Stage 1 Live)
         env:
           GEMINI_API_KEY: ${{ secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           echo "================================================================================"
-          echo " 🧪 SCENARIO 2: Hallucinated AI Analysis (Fabricated DB & Fake CVE)"
+          echo " 🛡️ STAGE 2: Verifier Agent (LLM-as-a-Judge) Auditing Stage 1 Report"
           echo "================================================================================"
 
-          PROMPT_2="System Instructions:
+          PROMPT_STAGE2="System Instructions:
           $(cat agent_instructions/verifier_agent/system_prompt.md)
 
           === TASK INSTRUCTIONS ===
-          Verify candidate AI report against ground truth. Output strictly raw JSON without markdown formatting.
+          Verify the candidate AI report generated in Stage 1 against the raw ground truth plan.json.
+          Output strictly valid JSON with keys: verification_passed, factual_accuracy_score, audit_verdict, hallucinations_detected, inconsistencies, summary.
 
           === [GROUND TRUTH: RAW INPUT DATA] ===
           $(cat demos/demo1-terraform-analyzer/terraform/plan.json)
 
-          === [AI GENERATED REPORT TO AUDIT] ===
-          $(cat demos/demo4-ai-verifier-gate/sample_hallucinated_report.md)"
+          === [AI GENERATED REPORT TO AUDIT (LIVE FROM STAGE 1)] ===
+          $(cat stage1_ai_analysis.md)"
 
-          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_2" --dangerously-skip-permissions | tee audit_hallucinated.json
+          agy --model "Gemini 3.5 Flash (Low)" -p "$PROMPT_STAGE2" --dangerously-skip-permissions | tee stage2_audit_verdict.json
 
-          echo "### Scenario 2: Hallucinated AI Analysis (Detection & Gate Block)" >> $GITHUB_STEP_SUMMARY
+      - name: Publish 2-Stage Verification Results to Step Summary
+        if: always()
+        run: |
+          echo "# Demo 4: 2-Stage AI Verifier & Anti-Hallucination Gate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🤖 Stage 1: Live Primary AI Agent Analysis" >> $GITHUB_STEP_SUMMARY
+          if [ -f stage1_ai_analysis.md ]; then
+            cat stage1_ai_analysis.md >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🛡️ Stage 2: Live LLM-as-a-Judge Audit Verdict" >> $GITHUB_STEP_SUMMARY
           echo '```json' >> $GITHUB_STEP_SUMMARY
-          cat audit_hallucinated.json >> $GITHUB_STEP_SUMMARY
+          if [ -f stage2_audit_verdict.json ]; then
+            cat stage2_audit_verdict.json >> $GITHUB_STEP_SUMMARY
+          fi
           echo '```' >> $GITHUB_STEP_SUMMARY
