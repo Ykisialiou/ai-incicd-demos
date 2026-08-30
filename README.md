@@ -25,8 +25,6 @@ ai-incicd-demos/
 │       ├── system_prompt.md
 │       ├── log_filtering_rules.md
 │       └── fix_recommendation_template.md
-├── bin/
-│   └── agy                                         # Lightweight Antigravity CLI runner (pipe logs to agent)
 ├── demos/
 │   ├── demo1-terraform-analyzer/                   # Demo 1: Real Terraform Plan & State Analysis ($0 cost)
 │   │   ├── README.md

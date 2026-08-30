@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------------------------
-# Demo 3: CI/CD Build Failure Doctor Runner
+# Demo 3: Build Doctor Failure Analyzer Runner
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -13,74 +13,33 @@ echo "==========================================================================
 echo " 🩺 DEMO 3: AI Agent in CI/CD — Build Failure Doctor & Log Root Cause Analyzer"
 echo "================================================================================"
 echo ""
-echo "Step 1: Simulating CI build step failure and capturing raw console log..."
+echo "Step 1: Capturing raw failure console log..."
 
-# Run simulated broken build if log file doesn't exist
 if [ ! -f "$LOG_FILE" ]; then
-  echo "Running broken build reproduction..."
   bash "$SAMPLE_DIR/broken_build.sh" > "$LOG_FILE" 2>&1 || true
 fi
 
-echo "Captured failed CI build log ($(wc -l < "$LOG_FILE" | tr -d ' ') lines):"
-echo "--------------------------------------------------------------------------------"
-head -n 15 "$LOG_FILE"
-echo "..."
-tail -n 10 "$LOG_FILE"
-echo "--------------------------------------------------------------------------------"
+# Ensure agy headless config exists
+mkdir -p "$HOME/.gemini/antigravity-cli" "$HOME/.antigravity" 2>/dev/null || true
+echo '{"modelProvider":"gemini"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true
+echo '{"modelProvider":"gemini"}' > "$HOME/.antigravity/settings.json" 2>/dev/null || true
 
 echo ""
-echo "Step 2: Intercepting failure and invoking Build Doctor Agent..."
+echo "Step 2: Invoking Official Antigravity AI Agent (agy) to diagnose failure..."
 echo "--------------------------------------------------------------------------------"
 
-call_agent() {
-  local system_prompt_file="$1"
-  local task_prompt="$2"
-  local input_payload="$3"
+SYSTEM_PROMPT_FILE="$PROJECT_ROOT/agent_instructions/build_doctor_agent/system_prompt.md"
 
-  local combined_prompt
-  combined_prompt="$(cat << PROMPT_EOF
-$(cat "$system_prompt_file")
+FINAL_PROMPT="System Instructions:
+$(cat "$SYSTEM_PROMPT_FILE")
 
-=== TASK INSTRUCTIONS ===
-$task_prompt
+Task:
+A CI/CD pipeline step just failed with exit code 1. Analyze this raw log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer.
 
-=== INPUT DATA ===
-$input_payload
-PROMPT_EOF
-)"
+Input Build Log:
+$(cat "$LOG_FILE")"
 
-  # Configure agy settings for API key authentication
-  local api_key="${GEMINI_API_KEY:-${AGY_API_KEY:-}}"
-  if [ -n "$api_key" ]; then
-    export GEMINI_API_KEY="$api_key"
-    export AGY_API_KEY="$api_key"
-    mkdir -p "$HOME/.gemini/antigravity-cli" "$HOME/.antigravity" 2>/dev/null || true
-    echo '{"modelProvider":"gemini"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true
-    echo '{"modelProvider":"gemini"}' > "$HOME/.antigravity/settings.json" 2>/dev/null || true
-  fi
-
-  local output=""
-  if command -v agy &>/dev/null; then
-    output=$(agy -p "$combined_prompt" --dangerously-skip-permissions 2>&1 || true)
-    # Check if agy failed due to auth or timeout
-    if echo "$output" | grep -qiE "authentication required|authentication failed|command not found|flag provided but not defined"; then
-      output=""
-    fi
-  fi
-
-  # Fallback to local runner if agy binary not present or failed authentication
-  if [ -z "$output" ]; then
-    output=$(echo "$input_payload" | "$PROJECT_ROOT/bin/agy" --system-prompt "$system_prompt_file" --prompt "$task_prompt")
-  fi
-
-  echo "$output"
-}
-
-SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/build_doctor_agent/system_prompt.md"
-
-call_agent "$SYSTEM_PROMPT" \
-  "A CI/CD pipeline step just failed with exit code 1. Analyze this raw log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer." \
-  "$(cat "$LOG_FILE")"
+agy -p "$FINAL_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "================================================================================"

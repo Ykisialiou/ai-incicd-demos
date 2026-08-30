@@ -29,8 +29,14 @@ jobs:
 
       - name: Install Antigravity CLI (agy)
         run: |
-          curl -fsSL https://antigravity.google/cli/install.sh | bash || true
-          echo "$HOME/.antigravity/bin:$HOME/.local/bin" >> $GITHUB_PATH
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
+
+      - name: Configure Antigravity CLI
+        run: |
+          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
+          echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
+          echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
       - name: Terraform Init & Plan
         id: tf_plan
@@ -40,23 +46,34 @@ jobs:
           terraform plan -out=tfplan
           terraform show -json tfplan > plan.json
 
-      - name: Configure Antigravity CLI
-        run: |
-          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
-          echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
-          echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
-
       - name: Run Terraform Analyzer AI Agent (agy)
         id: agent_analysis
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.AGY_API_KEY }}
           AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
-          ./bin/agy \
-            --system-prompt agent_instructions/terraform_analyzer_agent/system_prompt.md \
-            --file demos/demo1-terraform-analyzer/terraform/plan.json \
-            --prompt "Analyze this Terraform plan against architecture policy and evaluate blast radius, destructive replacements, and DNS risk." \
-            --output terraform_review.md
+          PROMPT="$(cat << 'PROMPT_EOF'
+System Instructions:
+$(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
+
+Task:
+Analyze this Terraform plan against architecture policy and evaluate blast radius, destructive replacements, and DNS risk.
+
+Input Plan JSON:
+$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+PROMPT_EOF
+)"
+          # Expand variables inside prompt
+          FINAL_PROMPT="System Instructions:
+$(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
+
+Task:
+Analyze this Terraform plan against architecture policy and evaluate blast radius, destructive replacements, and DNS risk.
+
+Input Plan JSON:
+$(cat demos/demo1-terraform-analyzer/terraform/plan.json)"
+
+          agy -p "$FINAL_PROMPT" --dangerously-skip-permissions > terraform_review.md
           
           # Append to GitHub Step Summary
           cat terraform_review.md >> $GITHUB_STEP_SUMMARY

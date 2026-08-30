@@ -26,8 +26,8 @@ jobs:
 
       - name: Install Antigravity CLI (agy)
         run: |
-          curl -fsSL https://antigravity.google/cli/install.sh | bash || true
-          echo "$HOME/.antigravity/bin:$HOME/.local/bin" >> $GITHUB_PATH
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
 
       - name: Execute Project Build (Simulated Step)
         id: run_build
@@ -51,11 +51,16 @@ jobs:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
           echo "Build failed. Invoking Build Doctor Agent..."
-          ./bin/agy \
-            --system-prompt agent_instructions/build_doctor_agent/system_prompt.md \
-            --file build_output.log \
-            --prompt "Analyze this failed build log, find the root cause, and provide a direct fix." \
-            --output build_diagnosis.md
+          FINAL_PROMPT="System Instructions:
+$(cat agent_instructions/build_doctor_agent/system_prompt.md)
+
+Task:
+Analyze this failed build log, find the root cause, and provide a direct fix.
+
+Failed Build Logs:
+$(cat build_output.log)"
+
+          agy -p "$FINAL_PROMPT" --dangerously-skip-permissions > build_diagnosis.md
 
           # Append diagnosis to Step Summary
           cat build_diagnosis.md >> $GITHUB_STEP_SUMMARY

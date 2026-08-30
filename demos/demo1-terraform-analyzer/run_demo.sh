@@ -12,16 +12,13 @@ echo "==========================================================================
 echo " 🚀 DEMO 1: AI Agent in CI/CD — Terraform Plan & Blast Radius Analyzer"
 echo "================================================================================"
 echo ""
-echo "Step 1: Running local Terraform Plan (Zero Cost AWS Provider)..."
+echo "Step 1: Preparing Terraform Plan JSON..."
 
-# Ensure temporary files are cleaned up on exit
 PLAN_FILE="$TF_DIR/tfplan"
 PLAN_JSON="$TF_DIR/plan.json"
 
-# Check if terraform binary is available
 if command -v terraform &>/dev/null; then
   echo "Found Terraform CLI. Generating plan..."
-  # If offline/sandbox, we provide a fallback pre-generated plan if terraform init is unavailable
   if TF_CLI_CONFIG_FILE=/dev/null terraform -chdir="$TF_DIR" plan -out=tfplan 2>/dev/null; then
     terraform -chdir="$TF_DIR" show -json tfplan > "$PLAN_JSON"
     echo "✅ Real Terraform plan JSON successfully generated at $PLAN_JSON"
@@ -30,7 +27,6 @@ if command -v terraform &>/dev/null; then
   fi
 fi
 
-# Create realistic plan JSON fixture if not present
 if [ ! -f "$PLAN_JSON" ]; then
   cat << 'EOF' > "$PLAN_JSON"
 {
@@ -91,72 +87,46 @@ if [ ! -f "$PLAN_JSON" ]; then
   ]
 }
 EOF
-  echo "✅ Prepared sample Terraform plan JSON representing PR diff."
 fi
 
+# Ensure agy headless config exists
+mkdir -p "$HOME/.gemini/antigravity-cli" "$HOME/.antigravity" 2>/dev/null || true
+echo '{"modelProvider":"gemini"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true
+echo '{"modelProvider":"gemini"}' > "$HOME/.antigravity/settings.json" 2>/dev/null || true
+
 echo ""
-echo "Step 2: Invoking Terraform Analyzer Agent with plan JSON..."
+echo "Step 2: Invoking Official Antigravity AI Agent (agy) with plan JSON..."
 echo "--------------------------------------------------------------------------------"
 
-call_agent() {
-  local system_prompt_file="$1"
-  local task_prompt="$2"
-  local input_payload="$3"
+SYSTEM_PROMPT_FILE="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/system_prompt.md"
 
-  local combined_prompt
-  combined_prompt="$(cat << PROMPT_EOF
-$(cat "$system_prompt_file")
+ANALYSIS_PROMPT="System Instructions:
+$(cat "$SYSTEM_PROMPT_FILE")
 
-=== TASK INSTRUCTIONS ===
-$task_prompt
+Task:
+Perform full SRE and security analysis on this Terraform plan. Evaluate destructive replacements, security group ingress, blast radius score, and state gate decision.
 
-=== INPUT DATA ===
-$input_payload
-PROMPT_EOF
-)"
+Input Plan JSON:
+$(cat "$PLAN_JSON")"
 
-  # Configure agy settings for API key authentication
-  local api_key="${GEMINI_API_KEY:-${AGY_API_KEY:-}}"
-  if [ -n "$api_key" ]; then
-    export GEMINI_API_KEY="$api_key"
-    export AGY_API_KEY="$api_key"
-    mkdir -p "$HOME/.gemini/antigravity-cli" "$HOME/.antigravity" 2>/dev/null || true
-    echo '{"modelProvider":"gemini"}' > "$HOME/.gemini/antigravity-cli/settings.json" 2>/dev/null || true
-    echo '{"modelProvider":"gemini"}' > "$HOME/.antigravity/settings.json" 2>/dev/null || true
-  fi
-
-  local output=""
-  if command -v agy &>/dev/null; then
-    output=$(agy -p "$combined_prompt" --dangerously-skip-permissions 2>&1 || true)
-    # Check if agy failed due to auth or timeout
-    if echo "$output" | grep -qiE "authentication required|authentication failed|command not found|flag provided but not defined"; then
-      output=""
-    fi
-  fi
-
-  # Fallback to repo runner if agy binary not present or failed authentication
-  if [ -z "$output" ]; then
-    output=$(echo "$input_payload" | "$PROJECT_ROOT/bin/agy" --system-prompt "$system_prompt_file" --prompt "$task_prompt")
-  fi
-
-  echo "$output"
-}
-
-SYSTEM_PROMPT="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/system_prompt.md"
-
-call_agent "$SYSTEM_PROMPT" \
-  "Perform full SRE and security analysis on this Terraform plan. Evaluate destructive replacements, security group ingress, blast radius score, and state gate decision." \
-  "$(cat "$PLAN_JSON")"
+agy -p "$ANALYSIS_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "Step 3: Generating Automated CAB / Change Management Release Notification Email..."
 echo "--------------------------------------------------------------------------------"
 
-CAB_PROMPT="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/cab_email_template.md"
+CAB_PROMPT_FILE="$PROJECT_ROOT/agent_instructions/terraform_analyzer_agent/cab_email_template.md"
 
-call_agent "$CAB_PROMPT" \
-  "Generate an executive Change Management / CAB approval email based on this Terraform plan. Highlight scheduled release window, business summary of changes, downtime risk, and rollback procedure." \
-  "$(cat "$PLAN_JSON")"
+CAB_PROMPT="System Instructions:
+$(cat "$CAB_PROMPT_FILE")
+
+Task:
+Generate an executive Change Management / CAB approval email based on this Terraform plan. Highlight scheduled release window, business summary of changes, downtime risk, and rollback procedure.
+
+Input Plan JSON:
+$(cat "$PLAN_JSON")"
+
+agy -p "$CAB_PROMPT" --dangerously-skip-permissions
 
 echo ""
 echo "Step 4: Publishing Confluence / Notion RFC (Request for Change) Page..."
@@ -203,29 +173,11 @@ cat << 'EOF' > "$RFC_FILE"
 | `aws_route53_record.api_dns` | `aws_route53_record` | ✨ **CREATE** | 🟢 **LOW (2.0/10)** |
 | `aws_s3_bucket.data_lake` | `aws_s3_bucket` | 🔄 **UPDATE** | 🟢 **SAFE (1.0/10)** |
 
-> [!CAUTION]
-> **Destructive Replacement Warning**:
-> `aws_db_instance.production_db` is marked for destruction and recreation due to identifier rename. Ensure snapshot backup is complete and add `lifecycle.prevent_destroy` before proceeding.
-
 ---
 
 ## 🛡️ Rollback & Contingency Strategy
-
 1. **Trigger Condition**: Any 5xx error rate > 0.5% or application connection timeout exceeding 30 seconds.
-2. **Automated Rollback**:
-   ```bash
-   gh workflow run rollback.yml -f ref=4f8b92a
-   ```
-3. **Database Restore**:
-   Restore RDS snapshot `snapshot-pre-release-20260831` (Recovery time: ~12 minutes).
-
----
-
-## 🧪 Post-Release Verification & Sign-off
-
-- [ ] Check Datadog / CloudWatch RDS CPU & IOPS dashboards.
-- [ ] Run synthetic end-to-end integration test suite (`pytest tests/smoke`).
-- [ ] Confirm no open SSH ports (`0.0.0.0/0`) remain in security groups.
+2. **Automated Rollback**: Restore pre-release RDS snapshot `snapshot-pre-release-20260831` and revert commit.
 EOF
 
 echo "✅ Created Confluence/Notion RFC Page: $RFC_FILE"

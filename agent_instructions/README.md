@@ -29,11 +29,18 @@ This directory contains production-grade system prompts, operational rules, and 
 
 ## Invocation Pattern
 
-Agents can be invoked via `bin/agy` (or system `agy` CLI):
+Agents are invoked via the official Google Antigravity CLI (`agy`):
 
 ```bash
-# Example: Pipe JSON / Log directly to agent via agy
-cat terraform_plan.json | ./bin/agy \
-  --system-prompt agent_instructions/terraform_analyzer_agent/system_prompt.md \
-  --prompt "Analyze this plan against production safety rules."
+# Example: Invoke agent with instructions and input data non-interactively
+PROMPT="System Instructions:
+$(cat agent_instructions/terraform_analyzer_agent/system_prompt.md)
+
+Task:
+Analyze this plan against production safety rules.
+
+Input Plan JSON:
+$(cat terraform_plan.json)"
+
+agy -p "$PROMPT" --dangerously-skip-permissions
 ```

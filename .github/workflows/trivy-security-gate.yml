@@ -26,8 +26,14 @@ jobs:
 
       - name: Install Antigravity CLI (agy)
         run: |
-          curl -fsSL https://antigravity.google/cli/install.sh | bash || true
-          echo "$HOME/.antigravity/bin:$HOME/.local/bin" >> $GITHUB_PATH
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin:$HOME/.antigravity/bin" >> $GITHUB_PATH
+
+      - name: Configure Antigravity CLI
+        run: |
+          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
+          echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
+          echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
 
       - name: Install Trivy
         uses: aquasecurity/trivy-action@master
@@ -37,12 +43,6 @@ jobs:
           format: 'json'
           output: 'trivy_report.json'
 
-      - name: Configure Antigravity CLI
-        run: |
-          mkdir -p ~/.gemini/antigravity-cli ~/.antigravity
-          echo '{"modelProvider":"gemini"}' > ~/.gemini/antigravity-cli/settings.json
-          echo '{"modelProvider":"gemini"}' > ~/.antigravity/settings.json
-
       - name: Run Trivy Security AI Agent (agy)
         id: security_agent
         env:
@@ -50,16 +50,20 @@ jobs:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
           SCAN_FILE="trivy_report.json"
-          # If raw filesystem scan is empty (no built image in runner), use comprehensive demo scan report
           if [ ! -s "$SCAN_FILE" ] || grep -q '"Results": \[\]' "$SCAN_FILE"; then
             SCAN_FILE="demos/demo2-trivy-security-analyzer/trivy_scan.json"
           fi
 
-          ./bin/agy \
-            --system-prompt agent_instructions/trivy_security_agent/system_prompt.md \
-            --file "$SCAN_FILE" \
-            --prompt "Triage this raw Trivy vulnerability scan. Compare raw findings against business risk, filter out unexploitable noise, and provide concise remediation patches." \
-            --output security_triage.md
+          FINAL_PROMPT="System Instructions:
+$(cat agent_instructions/trivy_security_agent/system_prompt.md)
+
+Task:
+Triage this raw Trivy vulnerability scan. Compare raw findings against business risk, filter out unexploitable noise, and provide concise remediation patches.
+
+Input Trivy Scan JSON:
+$(cat "$SCAN_FILE")"
+
+          agy -p "$FINAL_PROMPT" --dangerously-skip-permissions > security_triage.md
 
           # Append to GitHub Step Summary
           cat security_triage.md >> $GITHUB_STEP_SUMMARY
