@@ -1,12 +1,9 @@
-name: Trivy DevSecOps AI Triage Gate
+name: Demo 2 - Trivy DevSecOps Security Triage
 
 on:
   pull_request:
     paths:
-      - '**/Dockerfile'
-      - '**/package.json'
-  push:
-    branches: [main]
+      - 'demos/demo2-trivy-security-analyzer/**'
 
 permissions:
   contents: read

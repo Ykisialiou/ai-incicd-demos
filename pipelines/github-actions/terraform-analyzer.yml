@@ -1,10 +1,9 @@
-name: Terraform AI Safety Gate
+name: Demo 1 - Terraform SRE Safety Gate
 
 on:
   pull_request:
     paths:
-      - 'demos/demo1-terraform-analyzer/terraform/**'
-      - '**/*.tf'
+      - 'demos/demo1-terraform-analyzer/**'
 
 permissions:
   contents: read
@@ -41,7 +40,7 @@ jobs:
           ./bin/agy \
             --system-prompt agent_instructions/terraform_analyzer_agent/system_prompt.md \
             --file demos/demo1-terraform-analyzer/terraform/plan.json \
-            --prompt "Analyze this Terraform plan for destructive replacements and security misconfigurations." \
+            --prompt "Analyze this Terraform plan against architecture policy and evaluate blast radius, destructive replacements, and DNS risk." \
             --output terraform_review.md
           
           # Append to GitHub Step Summary
