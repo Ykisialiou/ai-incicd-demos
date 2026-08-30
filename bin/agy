@@ -1,27 +1,19 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# agy - Antigravity CLI Runner for CI/CD Pipelines & Autonomous AI Agents
+# agy - Antigravity CI/CD Bridge Runner
 #
-# Usage:
-#   # 1. Pipe input from stdin with prompt and system instructions:
-#   cat terraform_plan.json | agy --system-prompt agent_instructions/terraform_analyzer_agent/system_prompt.md --prompt "Analyze this plan"
-#
-#   # 2. Direct prompt execution:
-#   agy --prompt "Explain how to secure S3 state backend in Terraform"
-#
-#   # 3. Read input from file:
-#   agy --file trivy_scan.json --system-prompt agent_instructions/trivy_security_agent/system_prompt.md
+# Bridges CI/CD data and prompt templates directly to the Antigravity engine (agy)
 # ==============================================================================
 
 set -euo pipefail
 
-# Python execution engine for agy in automated headless CI/CD
 PYTHON_BIN="$(command -v python3 || echo "python")"
 
 exec "$PYTHON_BIN" - "$@" << 'PYEOF'
 import os
 import sys
 import json
+import shutil
 import argparse
 import subprocess
 import urllib.request
@@ -31,6 +23,21 @@ DEFAULT_MODEL = os.getenv("AGY_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-fla
 
 def get_api_key():
     return os.getenv("AGY_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+def call_native_agy_binary(system_instruction: str, user_content: str, model: str) -> str:
+    """Call installed official agy binary in print mode if available."""
+    agy_path = shutil.which("agy")
+    # Make sure we are not calling this script itself
+    if agy_path and not os.path.samefile(agy_path, sys.argv[0]):
+        full_prompt = f"System Instructions:\n{system_instruction}\n\nUser Task & Data:\n{user_content}"
+        try:
+            cmd = [agy_path, "--print", "--dangerously-skip-permissions", full_prompt]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except Exception as e:
+            sys.stderr.write(f"Notice: agy binary invocation fallback to direct API: {str(e)}\n")
+    return None
 
 def call_gemini_api(api_key: str, model: str, system_instruction: str, user_content: str) -> str:
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
@@ -76,7 +83,7 @@ Please review the automated Change Request generated for the upcoming infrastruc
 • Planned Window      : Tomorrow, 2026-08-31 03:00 UTC (Low traffic window)
 • Expected Duration   : 15 minutes
 • Expected Downtime   : ⚠️ ~10 minutes (Database Replacement Detected!)
-• Initiated By        : Pipeline / PR #142 (Author: DevOps Team)
+• Initiated By        : Pipeline / PR #1 (Author: DevOps Team)
 
 ================================================================================
 🔍 2. EXECUTIVE SUMMARY OF PLANNED CHANGES
@@ -110,45 +117,54 @@ Please review the automated Change Request generated for the upcoming infrastruc
 ---
 Generated automatically by Antigravity CI/CD Agent (agy)."""
     elif "terraform" in content_lower or "resource_changes" in content_lower or "aws_db_instance" in content_lower:
-        return """# 🛑 Terraform Safety Gate: BLOCKED (Action Required)
+        return """# 🛑 Terraform SRE Gate: BLOCKED (Action Required)
 
-### 🚨 Critical Risk Summary
-- **Destructive Replacement Detected**: `aws_db_instance.production_db` will be **DESTROYED AND RECREATED** due to engine version/identifier change. This will cause **SEVERE DATA LOSS** and downtime!
-- **Security Misconfiguration**: `aws_security_group.allow_ssh` opens port `22` to `0.0.0.0/0` (Entire Internet).
-- **Blast Radius Score**: **9.5 / 10 (CRITICAL)**
+> **Blast Radius Score**: **9.5 / 10 (CRITICAL)**  
+> **Change Summary**: `+2` to add, `~0` to change, `💥1` to replace, `-0` to destroy.  
+> **Notion RFC Page**: [📄 View CAB RFC Document](demos/demo1-terraform-analyzer/change_requests/RFC-20260831-01-customer-db.md)
 
 ---
 
-### 📋 Resource Change Breakdown
+### 📋 Engineering Change Matrix (Fast-Scan for Team Leads & Release Managers)
 
-| Resource | Action | Risk Level | Reason |
+| Resource | Action | Risk Level | Reason & Production Impact |
 | :--- | :--- | :--- | :--- |
-| `aws_db_instance.production_db` | 💥 **REPLACE (DESTROY -> CREATE)** | 🔴 **CRITICAL** | Forced replacement on DB identifier change |
-| `aws_security_group.allow_ssh` | ⚠️ **CREATE** | 🟠 **HIGH** | Public SSH ingress (`0.0.0.0/0:22`) |
-| `aws_s3_bucket.data_lake` | ✨ **CREATE** | 🟢 **LOW** | Standard S3 bucket creation |
+| `aws_db_instance.production_db` | 💥 **REPLACE (DESTROY -> CREATE)** | 🔴 **CRITICAL** | Renaming DB identifier forces cluster drop and recreation |
+| `aws_security_group.allow_ssh` | ⚠️ **CREATE** | 🟠 **HIGH** | Ingress open to entire public internet (`0.0.0.0/0:22`) |
+| `aws_s3_bucket.data_lake` | ✨ **CREATE** | 🟢 **LOW** | New standard encrypted S3 storage bucket |
 
 ---
 
-### 🛡️ Recommended Fixes
+### 🚨 Critical Alerts & Hazards
+- 💥 **DESTRUCTIVE REPLACEMENT DETECTED**: `aws_db_instance.production_db` will be **DROPPED AND RECREATED**. Potential data loss and downtime!
+- ⚠️ **PUBLIC INGRESS HAZARD**: `aws_security_group.allow_ssh` opens port `22` to `0.0.0.0/0` (Entire Internet).
 
-1. **Prevent Database Destruction**:
-   Add `lifecycle { prevent_destroy = true }` or use snapshot restoration:
-   ```hcl
-   resource "aws_db_instance" "production_db" {
-     lifecycle {
-       prevent_destroy = true
-     }
-     # ...
-   }
-   ```
+---
 
-2. **Restrict SSH Access**:
-   Replace `0.0.0.0/0` with internal VPC CIDR or VPN gateway:
-   ```hcl
-   cidr_blocks = ["10.0.0.0/16"] # Restricted corporate CIDR
-   ```
+### 🛡️ Recommended HCL Remediation Patch
 
-**CI Gate Decision**: ❌ **REJECTED (Manual Approval Required)**
+```hcl
+# Fix 1: Prevent accidental DB destruction
+resource "aws_db_instance" "production_db" {
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Fix 2: Restrict SSH ingress to internal corporate CIDR
+resource "aws_security_group" "allow_ssh" {
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"] # Corporate VPN only
+  }
+}
+```
+
+---
+
+**Gate Verdict**: ❌ **🔴 BLOCKED (Action Required Before Apply)**
 """
     elif "trivy" in content_lower or "vulnerabilit" in content_lower or "cve-" in content_lower:
         return """# 🛡️ Trivy Security Triage Report
@@ -227,7 +243,7 @@ apk add --no-cache python3 make g++ && npm install
         return f"### Antigravity Agent Analysis\n\nProcessed {len(user_content)} bytes of input data against prompt instructions.\n\nInput summary: Received task input. To run live API calls, export `AGY_API_KEY`."
 
 def main():
-    parser = argparse.ArgumentParser(description="agy - Antigravity CLI for CI/CD Pipelines & Demos")
+    parser = argparse.ArgumentParser(description="agy - Antigravity CI/CD Bridge Runner")
     parser.add_argument("--prompt", "-p", help="User prompt or task instructions", default="")
     parser.add_argument("--system-prompt", "-s", help="Path to system prompt file or raw text", default="")
     parser.add_argument("--file", "-f", help="Input file to read and append to user prompt", default="")
@@ -264,10 +280,17 @@ def main():
         sys.exit(1)
 
     api_key = get_api_key()
-    if args.offline or not api_key:
+    response_text = None
+    
+    # 1. Try native agy binary if live key available
+    if api_key and not args.offline:
+        response_text = call_native_agy_binary(system_instruction, user_content, args.model)
+        if not response_text:
+            response_text = call_gemini_api(api_key, args.model, system_instruction, user_content)
+    
+    # 2. Fallback to simulation
+    if not response_text:
         response_text = offline_simulation(system_instruction, user_content)
-    else:
-        response_text = call_gemini_api(api_key, args.model, system_instruction, user_content)
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:

@@ -37,13 +37,9 @@ jobs:
         env:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
-          CLI_CMD="agy"
-          if ! command -v agy &>/dev/null; then
-            CLI_CMD="./bin/agy"
-          fi
-
-          cat trivy_report.json | $CLI_CMD \
+          ./bin/agy \
             --system-prompt agent_instructions/trivy_security_agent/system_prompt.md \
+            --file trivy_report.json \
             --prompt "Triage this raw Trivy vulnerability scan. Filter out unexploitable noise and provide concise remediation patches." \
             --output security_triage.md
 

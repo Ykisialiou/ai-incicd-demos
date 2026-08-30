@@ -35,13 +35,9 @@ jobs:
           AGY_API_KEY: ${{ secrets.AGY_API_KEY }}
         run: |
           echo "Build failed. Invoking Build Doctor Agent..."
-          CLI_CMD="agy"
-          if ! command -v agy &>/dev/null; then
-            CLI_CMD="./bin/agy"
-          fi
-
-          cat build_output.log | $CLI_CMD \
+          ./bin/agy \
             --system-prompt agent_instructions/build_doctor_agent/system_prompt.md \
+            --file build_output.log \
             --prompt "Analyze this failed build log, find the root cause, and provide a direct fix." \
             --output build_diagnosis.md
 
