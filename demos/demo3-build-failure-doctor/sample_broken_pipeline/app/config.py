@@ -1,7 +1,7 @@
 import os
 
-# Environment: defaults to production if not explicitly configured
-APP_ENV = os.getenv("APP_ENV", "production")
+# Environment: defaults to production if not explicitly configured or empty
+APP_ENV = os.getenv("APP_ENV") or "production"
 
 # Infrastructure endpoints
 DB_HOST = os.getenv("DB_HOST", "postgres-staging.internal:5432")

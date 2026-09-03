@@ -1,6 +1,8 @@
 name: Demo 3 - CI Build Failure Doctor
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
