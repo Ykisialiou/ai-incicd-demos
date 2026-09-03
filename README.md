@@ -8,7 +8,7 @@ needs fact-checking.
 | :--- | :--- | :--- |
 | [1 — Terraform Plan Analyzer](./demos/demo1-terraform-analyzer/) | A PR renames an RDS identifier, opens a security group, and adds a reserved DNS record | `terraform show -json` output + an architecture policy |
 | [2 — Trivy Scan Triage](./demos/demo2-trivy-security-analyzer/) | ~19 CVEs and 4 Dockerfile misconfigurations from one filesystem scan | Raw Trivy JSON |
-| [3 — Build Failure Doctor](./demos/demo3-build-failure-doctor/) | `node-gyp` fails in Alpine with no Python or C++ toolchain | The failing build's console output |
+| [3 — Build Failure Doctor](./demos/demo3-build-failure-doctor/) | A pre-flight integration check fails with HTTP 401; the secret is blamed, but `APP_ENV` defaulted to production | The failing build's console output |
 | [3.1 — Context-Aware Build Doctor](./demos/demo3.1-context-aware-build-doctor/) | A Helm policy gate blames a template untouched for four months; the cause is a CI commit from two days earlier that deleted `Chart.lock` | The log **plus** `git log -p`, the PR diff, and the dependency state the run resolved |
 | [4 — AI Verifier Gate](./demos/demo4-ai-verifier-gate/) | An agent's report is checked for fabrications before it reaches a PR | A candidate report + the raw data it claims to describe |
 

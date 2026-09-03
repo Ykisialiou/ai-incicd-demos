@@ -1,13 +1,13 @@
 # Demo 3 — Build Failure Doctor
 
-A Node build fails inside an Alpine container. `npm ci` triggers a `node-gyp`
-rebuild of `better-sqlite3`, and the image has no Python or C++ toolchain.
+A pre-flight integration check fails with `HTTP 401: Unauthorized` against a payment gateway.
+The surface error looks like a bad or expired credential:
+`{"error": {"type": "authentication_error", "code": "invalid_api_key", "message": "Invalid API Key provided."}}`.
 
-The agent gets the raw console output and returns the failing command, the root
-cause, and the fix (`apk add --no-cache python3 make g++`).
+The engineer's instinct is to assume the CI secret is corrupted and waste time rotating credentials.
+The agent analyzes the raw log, notices the database and cache resolved to `staging` endpoints while the gateway resolved to `production`, and deduces that `APP_ENV` defaulted to `production`—sending a staging test key (`sk_test_...`) to the production gateway.
 
-The answer is present in the log — the work is filtering the dependency chatter
-around it. Demo 3.1 is the case where the answer is not in the log at all.
+The answer is present in the log — the challenge is cutting through the passing telemetry noise and spotting the environment mismatch behind the 401 red herring. Demo 3.1 is the contrasting case where the answer is not in the log at all.
 
 ## Running
 
@@ -19,6 +19,8 @@ around it. Demo 3.1 is the case where the answer is not in the log at all.
 
 | Path | What |
 | :--- | :--- |
-| `sample_broken_pipeline/broken_build.sh` | Emits the failing build's console output, exits 1 |
-| `run_demo.sh` | Runs the broken build, captures the log, invokes the agent |
-| `summarize_build_log.py` | Classifies the captured lines, so the log is visible before the diagnosis |
+| `sample_broken_pipeline/app/config.py` | Configuration module where `APP_ENV` defaults to `production` |
+| `sample_broken_pipeline/verify_service.py` | Integration test suite connecting to DB, cache, and payment gateway |
+| `sample_broken_pipeline/broken_build.sh` | Runs the integration check in a simulated CI environment |
+| `run_demo.sh` | Executes the broken pipeline, captures logs, and invokes the AI Build Doctor |
+| `summarize_build_log.py` | Classifies telemetry noise vs error output before the diagnosis |

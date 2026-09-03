@@ -20,9 +20,9 @@ import argparse
 import re
 import sys
 
-NOISE = re.compile(r"npm (http )?fetch|GET 200|\(from cache\)|^\s*$", re.IGNORECASE)
-ERROR = re.compile(r"gyp ERR!|npm ERR!|\bERROR\b|\bError:|FAIL(ED)?\b|Traceback", re.IGNORECASE)
-SCAFFOLD = re.compile(r"^\[(CI|INFO|WARN|DEBUG)\]", re.IGNORECASE)
+NOISE = re.compile(r"latency:|\bOK\b|Connected to|PING received|^\s*$", re.IGNORECASE)
+ERROR = re.compile(r"HTTP Error|\bFATAL\b|\bERROR\b|\bError:|FAIL(ED)?\b|Traceback|Unauthorized", re.IGNORECASE)
+SCAFFOLD = re.compile(r"^\[(CI|INFO|WARN|DEBUG)\]|^={5,}", re.IGNORECASE)
 
 
 def classify(lines: list) -> dict:
@@ -45,8 +45,8 @@ def render(lines: list, buckets: dict, exit_code, byte_len: int) -> str:
         return f"{round(100 * n / total)}%" if total else "—"
 
     rows = [
-        ("Dependency-download chatter", len(buckets["noise"])),
-        ("Error output (`gyp ERR!` / `npm ERR!`)", len(buckets["errors"])),
+        ("Passing health checks & telemetry", len(buckets["noise"])),
+        ("Error output & stack trace", len(buckets["errors"])),
         ("CI scaffolding (`[CI]` / `[INFO]`)", len(buckets["scaffold"])),
         ("Everything else", len(buckets["other"])),
     ]

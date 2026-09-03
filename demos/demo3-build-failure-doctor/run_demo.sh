@@ -13,15 +13,27 @@ echo "==========================================================================
 echo " 🩺 DEMO 3: AI Agent in CI/CD — Build Failure Doctor & Log Root Cause Analyzer"
 echo "================================================================================"
 echo ""
-echo "Step 1: Executing broken build script and capturing real console logs..."
+echo "Step 1: Running real pre-flight integration tests in simulated CI runner..."
+echo "--------------------------------------------------------------------------------"
 
 chmod +x "$SAMPLE_DIR/broken_build.sh"
 set +e
-bash "$SAMPLE_DIR/broken_build.sh" > "$LOG_FILE" 2>&1
-BUILD_EXIT_CODE=$?
+bash "$SAMPLE_DIR/broken_build.sh" 2>&1 | tee "$LOG_FILE"
+BUILD_EXIT_CODE="${PIPESTATUS[0]}"
 set -e
 
-echo "✅ Real build executed with exit code $BUILD_EXIT_CODE ($(wc -l < "$LOG_FILE") lines captured)"
+echo "--------------------------------------------------------------------------------"
+if [ "$BUILD_EXIT_CODE" -eq 0 ]; then
+  echo "✅ Pipeline step PASSED with exit code 0 ($(wc -l < "$LOG_FILE") lines captured)"
+  echo ""
+  echo "================================================================================"
+  echo " 🟢 All pre-flight checks passed! AI Build Doctor is SKIPPED (not needed)."
+  echo "================================================================================"
+  exit 0
+fi
+
+echo "💥 Pipeline step FAILED with exit code $BUILD_EXIT_CODE ($(wc -l < "$LOG_FILE") lines captured)"
+echo "🩺 Dispatching AI Build Doctor to diagnose failure..."
 
 echo ""
 echo "Step 1b: The captured log — the haystack the agent is handed..."

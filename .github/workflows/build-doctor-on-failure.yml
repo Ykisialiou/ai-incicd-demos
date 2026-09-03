@@ -1,8 +1,14 @@
-name: Demo 3 - CI Build Doctor (Failure Auto-Diagnosis)
+name: Demo 3 - CI Build Failure Doctor
 
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      app_env:
+        description: 'Target environment (leave empty to simulate failure; enter "staging" to verify healthy pass)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -10,10 +16,6 @@ permissions:
 
 env:
   CLAUDE_MODEL: claude-sonnet-5
-  # Replaces Claude Code's default agentic system prompt. Without this the CLI
-  # primes the model to reach for tools (e.g. "let me check project memory");
-  # with --tools "" there is nothing to call, so it narrates the tool call as
-  # prose and returns no report while still exiting 0.
   AGENT_SYSTEM_PROMPT: >-
     You are a non-interactive report generator running inside a CI pipeline.
     You have no tools, no filesystem access, and no memory, and you must never
@@ -22,28 +24,58 @@ env:
 
 jobs:
   build-and-diagnose:
-    name: Build Failure Auto-Doctor
+    name: Pre-Flight Integration Tests & AI Build Doctor
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Execute Broken Build Simulation
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Pre-Flight Integration Suite
         id: run_build
         continue-on-error: true
+        env:
+          APP_ENV: ${{ inputs.app_env }}
         run: |
           echo "================================================================================"
-          echo " 💥 STEP: Running intentionally broken build"
+          echo " 🚀 STEP 1: Running pre-flight integration tests in CI runner"
           echo "================================================================================"
           chmod +x demos/demo3-build-failure-doctor/sample_broken_pipeline/broken_build.sh
           bash demos/demo3-build-failure-doctor/sample_broken_pipeline/broken_build.sh 2>&1 | tee build_output.log
           BUILD_EXIT=${PIPESTATUS[0]}
-          echo "📊 Build exit code: $BUILD_EXIT"
+          echo "📊 Test exit code: $BUILD_EXIT"
           echo "BUILD_EXIT_CODE=$BUILD_EXIT" >> $GITHUB_ENV
-          echo "📄 Build log size: $(wc -c < build_output.log) bytes"
+          echo "📄 Captured log size: $(wc -c < build_output.log) bytes ($(wc -l < build_output.log) lines)"
           exit $BUILD_EXIT
 
-      - name: Setup Node.js
+      - name: Report Healthy Pipeline (AI Doctor Skipped)
+        if: steps.run_build.outcome == 'success'
+        run: |
+          echo "================================================================================"
+          echo " 🟢 All pre-flight checks passed! AI Build Doctor is SKIPPED (not needed)."
+          echo "================================================================================"
+          echo "# 🟢 Demo 3: All Integration Checks Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The build and integration suite completed successfully with exit code 0." >> $GITHUB_STEP_SUMMARY
+          echo "No errors detected — AI Build Doctor was not invoked." >> $GITHUB_STEP_SUMMARY
+
+      - name: Summarize Raw Pipeline Log (Noise vs Signal)
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          echo "================================================================================"
+          echo " 📊 STEP 1b: Classifying raw pipeline logs (Signal vs Telemetry Noise)"
+          echo "================================================================================"
+          python3 demos/demo3-build-failure-doctor/summarize_build_log.py \
+            --input build_output.log \
+            --exit-code "${BUILD_EXIT_CODE:-1}" \
+            --out build_log_summary.md
+          cat build_log_summary.md
+
+      - name: Setup Node.js for Claude CLI
         if: steps.run_build.outcome == 'failure'
         uses: actions/setup-node@v4
         with:
@@ -77,19 +109,28 @@ jobs:
         run: |
           set -o pipefail
           echo "================================================================================"
-          echo " 🩺 STEP: AI Agent Diagnosing Build Failure"
+          echo " 🩺 STEP 2: AI Agent Diagnosing Pipeline Failure Log"
           echo "================================================================================"
 
           echo "::group::Raw build log fed to AI"
           cat build_output.log
           echo "::endgroup::"
 
-          # Build prompt via temp file to keep YAML clean and avoid ARG_MAX limits
+          SYSTEM_PROMPT_CONTENT=$(cat agent_instructions/build_doctor_agent/system_prompt.md)
+          TEMPLATE_CONTENT=$(cat agent_instructions/build_doctor_agent/fix_recommendation_template.md)
           LOG_CONTENT=$(cat build_output.log)
-          cat > /tmp/doctor_prompt.txt <<PROMPT_EOF
-          A CI/CD pipeline step just failed with exit code 1. Analyze this raw build log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer.
 
-          Output only the markdown diagnosis, with no preamble and without wrapping the whole response in a code fence.
+          cat > /tmp/doctor_prompt.txt <<PROMPT_EOF
+          System Instructions:
+          ${SYSTEM_PROMPT_CONTENT}
+
+          Diagnostic Output Template:
+          ${TEMPLATE_CONTENT}
+
+          Task:
+          A CI/CD pipeline step just failed with exit code ${BUILD_EXIT_CODE:-1}. Analyze this raw build log, filter out irrelevant telemetry and noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer.
+
+          Output only the markdown diagnosis strictly following the template, with no preamble and without wrapping the whole response in an outer code fence.
 
           === INPUT BUILD LOG ===
           ${LOG_CONTENT}
@@ -104,26 +145,18 @@ jobs:
             --system-prompt "$AGENT_SYSTEM_PROMPT" < /tmp/doctor_prompt.txt | tee build_diagnosis.md
           CLAUDE_EXIT=$?
           echo "::endgroup::"
+
           python3 scripts/strip_code_fence.py build_diagnosis.md
           python3 scripts/validate_agent_output.py build_diagnosis.md --min-bytes 400 --label "build diagnosis"
 
           echo "📊 claude exit code: $CLAUDE_EXIT"
           echo "📄 Diagnosis output size: $(wc -c < build_diagnosis.md) bytes"
-          echo "📄 Diagnosis output lines: $(wc -l < build_diagnosis.md)"
 
-          echo "# Demo 3: CI Build Doctor" >> $GITHUB_STEP_SUMMARY
+          echo "# 🩺 Demo 3: CI Build Failure Doctor" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-
-          # The captured log in full, not tail -50: the head carries the context
-          # (which commit, which step) and truncating it hides where the build began.
-          python3 demos/demo3-build-failure-doctor/summarize_build_log.py \
-            --input build_output.log \
-            --exit-code "${BUILD_EXIT_CODE:-1}" \
-            --out build_log_summary.md
           cat build_log_summary.md >> $GITHUB_STEP_SUMMARY
-
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## 🩺 AI Build Doctor Diagnosis — the same log, diagnosed" >> $GITHUB_STEP_SUMMARY
+          echo "## 🩺 AI Build Doctor Diagnosis" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           cat build_diagnosis.md >> $GITHUB_STEP_SUMMARY
 
@@ -135,13 +168,11 @@ jobs:
             const fs = require('fs');
             if (fs.existsSync('build_diagnosis.md')) {
               const diagnosis = fs.readFileSync('build_diagnosis.md', 'utf8');
-              // Attach the captured log so the reader can check the diagnosis
-              // against the evidence without leaving the pull request.
               const log = fs.existsSync('build_output.log')
                 ? fs.readFileSync('build_output.log', 'utf8')
                 : '';
               const body = log
-                ? `${diagnosis}\n\n<details><summary>📄 Captured build log (${log.split('\n').length} lines)</summary>\n\n\`\`\`text\n${log}\n\`\`\`\n\n</details>`
+                ? `${diagnosis}\n\n<details><summary>📄 Captured pipeline log (${log.split('\n').length} lines)</summary>\n\n\`\`\`text\n${log}\n\`\`\`\n\n</details>`
                 : diagnosis;
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
@@ -154,5 +185,5 @@ jobs:
       - name: Conclude Pipeline Failure
         if: steps.run_build.outcome == 'failure'
         run: |
-          echo "❌ Build step failed as expected. AI Doctor diagnostics above."
+          echo "❌ Integration step failed as expected. AI Doctor diagnostics reported above."
           exit 1
