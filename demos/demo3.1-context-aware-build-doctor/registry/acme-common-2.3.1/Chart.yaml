@@ -1,0 +1,5 @@
+apiVersion: v2
+name: acme-common
+description: Shared building blocks for ACME service charts
+type: library
+version: 2.3.1

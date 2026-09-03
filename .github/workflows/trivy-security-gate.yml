@@ -1,0 +1,140 @@
+name: Demo 2 - Trivy DevSecOps Security Triage
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CLAUDE_MODEL: claude-sonnet-5
+  # Replaces Claude Code's default agentic system prompt. Without this the CLI
+  # primes the model to reach for tools (e.g. "let me check project memory");
+  # with --tools "" there is nothing to call, so it narrates the tool call as
+  # prose and returns no report while still exiting 0.
+  AGENT_SYSTEM_PROMPT: >-
+    You are a non-interactive report generator running inside a CI pipeline.
+    You have no tools, no filesystem access, and no memory, and you must never
+    announce, narrate, or emit a tool call. Everything you need is in the user
+    message. Respond with the finished document only.
+
+jobs:
+  trivy-ai-triage:
+    name: Trivy Security AI Triage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Trivy Scanner
+        run: |
+          echo "::group::Installing Trivy"
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy --version
+          echo "::endgroup::"
+          echo "✅ Trivy installed"
+
+      - name: Run Real Trivy Security Scan
+        run: |
+          echo "================================================================================"
+          echo " 🔍 STEP: Running live Trivy filesystem scan"
+          echo "================================================================================"
+          trivy fs --scanners vuln,secret,misconfig --format json --output trivy_scan.json demos/demo2-trivy-security-analyzer/sample_app
+          SCAN_SIZE=$(wc -c < trivy_scan.json)
+          echo "✅ Generated live trivy_scan.json ($SCAN_SIZE bytes)"
+
+          echo "::group::Raw Trivy JSON output"
+          cat trivy_scan.json
+          echo "::endgroup::"
+
+          echo "================================================================================"
+          echo " 📊 Raw scanner output, summarised (no interpretation)"
+          echo "================================================================================"
+          python3 demos/demo2-trivy-security-analyzer/summarize_trivy.py \
+            --input trivy_scan.json --out trivy_summary.md
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat trivy_summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code CLI
+        run: |
+          echo "::group::Installing Claude Code CLI"
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+          echo "::endgroup::"
+          echo "✅ claude CLI installed"
+
+      - name: Verify Anthropic Credentials
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY repository secret is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "✅ ANTHROPIC_API_KEY present (${#ANTHROPIC_API_KEY} chars)"
+          echo "🤖 Model: $CLAUDE_MODEL"
+
+      - name: "Run AI Security Triage (AI Agent)"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          echo "================================================================================"
+          echo " 🤖 STEP: AI Agent Triaging Trivy Security Scan Results"
+          echo "================================================================================"
+
+          # Build prompt via temp file to keep YAML clean and avoid ARG_MAX limits
+          SCAN_CONTENT=$(cat trivy_scan.json)
+          cat > /tmp/trivy_prompt.txt <<PROMPT_EOF
+          Triage this raw Trivy security scan JSON. Filter noise and unexploitable CVEs, identify root-cause base image and library updates, highlight actionable CVEs with severity, and generate copy-paste remediation diffs.
+
+          Output only the markdown report, with no preamble and without wrapping the whole response in a code fence.
+
+          === INPUT TRIVY SCAN JSON ===
+          ${SCAN_CONTENT}
+          PROMPT_EOF
+
+          echo "📋 Prompt size: $(wc -c < /tmp/trivy_prompt.txt) bytes"
+          echo "🤖 Calling claude ($CLAUDE_MODEL)..."
+
+          echo "::group::claude security triage output"
+          claude -p --model "$CLAUDE_MODEL" --output-format text \
+            --tools "" --setting-sources "" \
+            --system-prompt "$AGENT_SYSTEM_PROMPT" < /tmp/trivy_prompt.txt | tee security_triage.md
+          CLAUDE_EXIT=$?
+          echo "::endgroup::"
+          python3 scripts/strip_code_fence.py security_triage.md
+          python3 scripts/validate_agent_output.py security_triage.md --min-bytes 400 --label "security triage"
+
+          echo "📊 claude exit code: $CLAUDE_EXIT"
+          echo "📄 Triage output size: $(wc -c < security_triage.md) bytes"
+          echo "📄 Triage output lines: $(wc -l < security_triage.md)"
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🤖 AI Security Triage — the same JSON, triaged" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat security_triage.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Post PR Security Triage Comment
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('security_triage.md')) {
+              const reviewBody = fs.readFileSync('security_triage.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: reviewBody
+              });
+            }

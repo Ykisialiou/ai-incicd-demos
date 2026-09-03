@@ -1,0 +1,158 @@
+name: Demo 3 - CI Build Doctor (Failure Auto-Diagnosis)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CLAUDE_MODEL: claude-sonnet-5
+  # Replaces Claude Code's default agentic system prompt. Without this the CLI
+  # primes the model to reach for tools (e.g. "let me check project memory");
+  # with --tools "" there is nothing to call, so it narrates the tool call as
+  # prose and returns no report while still exiting 0.
+  AGENT_SYSTEM_PROMPT: >-
+    You are a non-interactive report generator running inside a CI pipeline.
+    You have no tools, no filesystem access, and no memory, and you must never
+    announce, narrate, or emit a tool call. Everything you need is in the user
+    message. Respond with the finished document only.
+
+jobs:
+  build-and-diagnose:
+    name: Build Failure Auto-Doctor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Execute Broken Build Simulation
+        id: run_build
+        continue-on-error: true
+        run: |
+          echo "================================================================================"
+          echo " 💥 STEP: Running intentionally broken build"
+          echo "================================================================================"
+          chmod +x demos/demo3-build-failure-doctor/sample_broken_pipeline/broken_build.sh
+          bash demos/demo3-build-failure-doctor/sample_broken_pipeline/broken_build.sh 2>&1 | tee build_output.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "📊 Build exit code: $BUILD_EXIT"
+          echo "BUILD_EXIT_CODE=$BUILD_EXIT" >> $GITHUB_ENV
+          echo "📄 Build log size: $(wc -c < build_output.log) bytes"
+          exit $BUILD_EXIT
+
+      - name: Setup Node.js
+        if: steps.run_build.outcome == 'failure'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code CLI
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          echo "::group::Installing Claude Code CLI"
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+          echo "::endgroup::"
+          echo "✅ claude CLI installed"
+
+      - name: Verify Anthropic Credentials
+        if: steps.run_build.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY repository secret is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "✅ ANTHROPIC_API_KEY present (${#ANTHROPIC_API_KEY} chars)"
+          echo "🤖 Model: $CLAUDE_MODEL"
+
+      - name: "Run AI Build Doctor (AI Agent)"
+        if: steps.run_build.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          echo "================================================================================"
+          echo " 🩺 STEP: AI Agent Diagnosing Build Failure"
+          echo "================================================================================"
+
+          echo "::group::Raw build log fed to AI"
+          cat build_output.log
+          echo "::endgroup::"
+
+          # Build prompt via temp file to keep YAML clean and avoid ARG_MAX limits
+          LOG_CONTENT=$(cat build_output.log)
+          cat > /tmp/doctor_prompt.txt <<PROMPT_EOF
+          A CI/CD pipeline step just failed with exit code 1. Analyze this raw build log, filter out irrelevant download/build noise, pinpoint the exact failing line and root cause, and provide a clear 1-2-3 fix for the engineer.
+
+          Output only the markdown diagnosis, with no preamble and without wrapping the whole response in a code fence.
+
+          === INPUT BUILD LOG ===
+          ${LOG_CONTENT}
+          PROMPT_EOF
+
+          echo "📋 Prompt size: $(wc -c < /tmp/doctor_prompt.txt) bytes"
+          echo "🤖 Calling claude ($CLAUDE_MODEL)..."
+
+          echo "::group::claude build doctor output"
+          claude -p --model "$CLAUDE_MODEL" --output-format text \
+            --tools "" --setting-sources "" \
+            --system-prompt "$AGENT_SYSTEM_PROMPT" < /tmp/doctor_prompt.txt | tee build_diagnosis.md
+          CLAUDE_EXIT=$?
+          echo "::endgroup::"
+          python3 scripts/strip_code_fence.py build_diagnosis.md
+          python3 scripts/validate_agent_output.py build_diagnosis.md --min-bytes 400 --label "build diagnosis"
+
+          echo "📊 claude exit code: $CLAUDE_EXIT"
+          echo "📄 Diagnosis output size: $(wc -c < build_diagnosis.md) bytes"
+          echo "📄 Diagnosis output lines: $(wc -l < build_diagnosis.md)"
+
+          echo "# Demo 3: CI Build Doctor" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # The captured log in full, not tail -50: the head carries the context
+          # (which commit, which step) and truncating it hides where the build began.
+          python3 demos/demo3-build-failure-doctor/summarize_build_log.py \
+            --input build_output.log \
+            --exit-code "${BUILD_EXIT_CODE:-1}" \
+            --out build_log_summary.md
+          cat build_log_summary.md >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🩺 AI Build Doctor Diagnosis — the same log, diagnosed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat build_diagnosis.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Post PR Diagnosis Comment
+        uses: actions/github-script@v7
+        if: "steps.run_build.outcome == 'failure' && github.event_name == 'pull_request'"
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('build_diagnosis.md')) {
+              const diagnosis = fs.readFileSync('build_diagnosis.md', 'utf8');
+              // Attach the captured log so the reader can check the diagnosis
+              // against the evidence without leaving the pull request.
+              const log = fs.existsSync('build_output.log')
+                ? fs.readFileSync('build_output.log', 'utf8')
+                : '';
+              const body = log
+                ? `${diagnosis}\n\n<details><summary>📄 Captured build log (${log.split('\n').length} lines)</summary>\n\n\`\`\`text\n${log}\n\`\`\`\n\n</details>`
+                : diagnosis;
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Conclude Pipeline Failure
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          echo "❌ Build step failed as expected. AI Doctor diagnostics above."
+          exit 1

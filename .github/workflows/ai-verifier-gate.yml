@@ -1,0 +1,221 @@
+name: Demo 4 - AI Verifier Safety Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CLAUDE_MODEL: claude-sonnet-5
+  # Replaces Claude Code's default agentic system prompt. Without this the CLI
+  # primes the model to reach for tools (e.g. "let me check project memory");
+  # with --tools "" there is nothing to call, so it narrates the tool call as
+  # prose and returns no report while still exiting 0.
+  AGENT_SYSTEM_PROMPT: >-
+    You are a non-interactive report generator running inside a CI pipeline.
+    You have no tools, no filesystem access, and no memory, and you must never
+    announce, narrate, or emit a tool call. Everything you need is in the user
+    message. Respond with the finished document only.
+
+jobs:
+  two-stage-ai-verification:
+    name: 2-Stage AI Verifier Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Generate Live Terraform Plan JSON (Ground Truth)
+        run: |
+          echo "::group::Terraform Init & Plan"
+          cd demos/demo1-terraform-analyzer/terraform
+          terraform init -backend=false -input=false
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > plan.json
+          PLAN_SIZE=$(wc -c < plan.json)
+          echo "::endgroup::"
+          echo "✅ Ground truth plan.json generated ($PLAN_SIZE bytes)"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code CLI
+        run: |
+          echo "::group::Installing Claude Code CLI"
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+          echo "::endgroup::"
+          echo "✅ claude CLI installed"
+
+      - name: Verify Anthropic Credentials
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY repository secret is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "✅ ANTHROPIC_API_KEY present (${#ANTHROPIC_API_KEY} chars)"
+          echo "🤖 Model: $CLAUDE_MODEL"
+
+      - name: "Pass 1 - Primary Agent Writes the Report"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          echo "================================================================================"
+          echo " 🤖 PASS 1: Primary AI agent analyses the Terraform plan"
+          echo "================================================================================"
+
+          PLAN_CONTENT=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+          cat > /tmp/stage1_prompt.txt <<PROMPT_EOF
+          Analyse this Terraform plan and report the planned infrastructure changes and their risks.
+
+          Output exactly this structure and nothing else:
+
+          # Terraform Plan Analysis
+
+          > **Changes**: \`+{ADD}\` add, \`~{CHANGE}\` change, \`💥{REPLACE}\` replace, \`-{DESTROY}\` destroy
+
+          | Resource | Action | Risk | Impact |
+          | :--- | :--- | :--- | :--- |
+          | \`{resource_address}\` | {create/update/destroy/replace} | {🟢 LOW / 🟡 MEDIUM / 🔴 CRITICAL} | {one line} |
+
+          ### Summary
+          - {2 to 3 bullets}
+
+          One row per resource in the plan. Every claim must be grounded in the JSON below - do not speculate about resources that are not present. Keep it under 40 lines. No preamble, no code fence around the whole response.
+
+          === INPUT TERRAFORM PLAN JSON ===
+          ${PLAN_CONTENT}
+          PROMPT_EOF
+
+          echo "📋 Prompt size: $(wc -c < /tmp/stage1_prompt.txt) bytes"
+          echo "🤖 Calling claude ($CLAUDE_MODEL)..."
+
+          echo "::group::Pass 1 output (the genuine report)"
+          claude -p --model "$CLAUDE_MODEL" --output-format text \
+            --tools "" --setting-sources "" \
+            --system-prompt "$AGENT_SYSTEM_PROMPT" < /tmp/stage1_prompt.txt | tee report_clean.md
+          CLAUDE_EXIT=$?
+          echo "::endgroup::"
+          python3 scripts/strip_code_fence.py report_clean.md
+          python3 scripts/validate_agent_output.py report_clean.md --min-bytes 300 --label "pass 1 report"
+
+          echo "📊 claude exit code: $CLAUDE_EXIT"
+          echo "📄 Genuine report: $(wc -c < report_clean.md) bytes, $(wc -l < report_clean.md) lines"
+
+      - name: "Forge a Corrupted Copy (deterministic, no AI)"
+        run: |
+          echo "================================================================================"
+          echo " 🧪 Injecting known fabrications into a COPY of the genuine report"
+          echo "================================================================================"
+          python3 demos/demo4-ai-verifier-gate/inject_hallucinations.py \
+            --input report_clean.md \
+            --output report_tampered.md \
+            --manifest injection_manifest.json
+
+          echo "::group::Diff: genuine vs tampered"
+          diff report_clean.md report_tampered.md || true
+          echo "::endgroup::"
+
+      - name: "Pass 2a - Judge Audits the GENUINE Report"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          echo "================================================================================"
+          echo " 🛡️ PASS 2a: LLM-as-a-Judge auditing the genuine report (expect APPROVED)"
+          echo "================================================================================"
+
+          VERIFIER_DIR=agent_instructions/verifier_agent
+          VERIFIER_PROMPT=$(cat "$VERIFIER_DIR/system_prompt.md")
+          VERIFICATION_RULES=$(cat "$VERIFIER_DIR/verification_rules.md")
+          PLAN_CONTENT=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+          REPORT_CONTENT=$(cat report_clean.md)
+
+          cat > /tmp/judge_clean.txt <<PROMPT_EOF
+          ${VERIFIER_PROMPT}
+
+          === VERIFICATION RULES (source file: agent_instructions/verifier_agent/verification_rules.md) ===
+          ${VERIFICATION_RULES}
+
+          === [GROUND TRUTH: RAW INPUT DATA] ===
+          ${PLAN_CONTENT}
+
+          === [AI GENERATED REPORT TO AUDIT] ===
+          ${REPORT_CONTENT}
+          PROMPT_EOF
+
+          echo "📋 Prompt size: $(wc -c < /tmp/judge_clean.txt) bytes"
+
+          echo "::group::Pass 2a verdict"
+          claude -p --model "$CLAUDE_MODEL" --output-format text \
+            --tools "" --setting-sources "" \
+            --system-prompt "$AGENT_SYSTEM_PROMPT" < /tmp/judge_clean.txt | tee verdict_clean.json
+          echo "::endgroup::"
+          python3 scripts/strip_code_fence.py verdict_clean.json
+          python3 scripts/validate_agent_output.py verdict_clean.json --min-bytes 120 --label "pass 2a verdict"
+
+      - name: "Pass 2b - Judge Audits the CORRUPTED Report"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          echo "================================================================================"
+          echo " 🛡️ PASS 2b: LLM-as-a-Judge auditing the tampered report (expect REJECTED)"
+          echo "================================================================================"
+
+          VERIFIER_DIR=agent_instructions/verifier_agent
+          VERIFIER_PROMPT=$(cat "$VERIFIER_DIR/system_prompt.md")
+          VERIFICATION_RULES=$(cat "$VERIFIER_DIR/verification_rules.md")
+          PLAN_CONTENT=$(cat demos/demo1-terraform-analyzer/terraform/plan.json)
+          REPORT_CONTENT=$(cat report_tampered.md)
+
+          cat > /tmp/judge_tampered.txt <<PROMPT_EOF
+          ${VERIFIER_PROMPT}
+
+          === VERIFICATION RULES (source file: agent_instructions/verifier_agent/verification_rules.md) ===
+          ${VERIFICATION_RULES}
+
+          === [GROUND TRUTH: RAW INPUT DATA] ===
+          ${PLAN_CONTENT}
+
+          === [AI GENERATED REPORT TO AUDIT] ===
+          ${REPORT_CONTENT}
+          PROMPT_EOF
+
+          echo "📋 Prompt size: $(wc -c < /tmp/judge_tampered.txt) bytes"
+
+          echo "::group::Pass 2b verdict"
+          claude -p --model "$CLAUDE_MODEL" --output-format text \
+            --tools "" --setting-sources "" \
+            --system-prompt "$AGENT_SYSTEM_PROMPT" < /tmp/judge_tampered.txt | tee verdict_tampered.json
+          echo "::endgroup::"
+          python3 scripts/strip_code_fence.py verdict_tampered.json
+          python3 scripts/validate_agent_output.py verdict_tampered.json --min-bytes 120 --label "pass 2b verdict"
+
+      - name: Publish Audit Comparison
+        if: always()
+        run: |
+          echo "# Demo 4: LLM-as-a-Judge Verification Gate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f verdict_clean.json ] && [ -f verdict_tampered.json ]; then
+            python3 demos/demo4-ai-verifier-gate/render_audit_table.py \
+              --clean verdict_clean.json \
+              --tampered verdict_tampered.json \
+              --manifest injection_manifest.json \
+              --out audit_table.md
+            cat audit_table.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ One or both verdicts are missing - see the step logs." >> $GITHUB_STEP_SUMMARY
+          fi

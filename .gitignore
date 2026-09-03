@@ -1,0 +1,49 @@
+# ------------------------------------------------------------------------------
+# Kept locally, deliberately not tracked: the slide deck and speaker notes live
+# on the presenter's machine. `pipelines/` was a stale copy of .github/workflows.
+# ------------------------------------------------------------------------------
+presentation/
+pipelines/
+
+# Terraform
+**/.terraform/
+*.tfplan
+tfplan
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+ENV/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Build logs & temp outputs
+*.log
+
+# Per-run agent artifacts
+live_generated_rfc.md
+report_clean.md
+report_tampered.md
+injection_manifest.json
+verdict_clean.json
+verdict_tampered.json
+verdict_log_only.md
+verdict_with_context.md
+audit_table.md
+terraform_review.md
+trivy_summary.md
+build_log_summary.md
+context_pack.md
+
+# Demo 3.1 rebuilds its fixture repository on every run
+demos/demo3.1-context-aware-build-doctor/.workspace/

@@ -1,0 +1,16 @@
+{
+  "name": "sample-microservice",
+  "version": "1.0.0",
+  "description": "Demo service for CI/CD DevSecOps security triage",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "4.16.0",
+    "lodash": "4.17.15"
+  },
+  "devDependencies": {
+    "archiver": "3.0.0"
+  }
+}

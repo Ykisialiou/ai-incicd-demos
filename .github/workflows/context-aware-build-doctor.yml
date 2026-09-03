@@ -1,0 +1,244 @@
+name: Demo 3.1 - Context-Aware Build Doctor (Blame Attribution)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CLAUDE_MODEL: claude-sonnet-5
+  DEMO_DIR: demos/demo3.1-context-aware-build-doctor
+  CHART: charts/payments
+  # Replaces Claude Code's default agentic system prompt. Without this the CLI
+  # primes the model to reach for tools (e.g. "let me check project memory");
+  # with --tools "" there is nothing to call, so it narrates the tool call as
+  # prose and returns no report while still exiting 0.
+  AGENT_SYSTEM_PROMPT: >-
+    You are a non-interactive report generator running inside a CI pipeline.
+    You have no tools, no filesystem access, and no memory, and you must never
+    announce, narrate, or emit a tool call. Everything you need is in the user
+    message. Respond with the finished document only.
+
+jobs:
+  attribute-failure:
+    name: Attribute the Failure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Build the repository under test (real git history)
+        run: |
+          echo "::group::Building fixture repository"
+          bash "$DEMO_DIR/build_repo_history.sh" "$RUNNER_TEMP/repo"
+          git -C "$RUNNER_TEMP/repo" log -n 6 --date=relative \
+            --format='  %h  %<(16)%ad  %<(14)%an  %s' main
+          echo "::endgroup::"
+
+      - name: Run chart-validate (real helm render + policy gate)
+        id: run_build
+        continue-on-error: true
+        run: |
+          PR_COMMIT_SHA=$(git -C "$RUNNER_TEMP/repo" log -1 --format=%h)
+          PR_COMMIT_SUBJECT=$(git -C "$RUNNER_TEMP/repo" log -1 --format=%s)
+          export PR_COMMIT_SHA PR_COMMIT_SUBJECT
+
+          bash "$DEMO_DIR/failing_ci_run.sh" \
+            --repo "$RUNNER_TEMP/repo" \
+            --registry "$DEMO_DIR/registry" 2>&1 | tee ci_run.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "BUILD_EXIT_CODE=$BUILD_EXIT" >> $GITHUB_ENV
+          echo "chart-validate exit code: $BUILD_EXIT"
+          exit $BUILD_EXIT
+
+      - name: Establish the log-only baseline
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          echo "::group::Log-only sweep"
+          python3 "$DEMO_DIR/collect_context.py" \
+            --log ci_run.log \
+            --repo "$RUNNER_TEMP/repo" \
+            --chart "$CHART" \
+            --exit-code "${BUILD_EXIT_CODE:-1}" \
+            --out context_pack.md
+          echo "::endgroup::"
+
+      - name: Setup Node.js
+        if: steps.run_build.outcome == 'failure'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code CLI
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          echo "::group::Installing Claude Code CLI"
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+          echo "::endgroup::"
+
+      - name: Verify Anthropic Credentials
+        if: steps.run_build.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY repository secret is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "✅ ANTHROPIC_API_KEY present (${#ANTHROPIC_API_KEY} chars)"
+          echo "🤖 Model: $CLAUDE_MODEL"
+
+      - name: "Pass 1 - Build Doctor, log only (AI Agent)"
+        if: steps.run_build.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          AGENT_DIR=agent_instructions/build_doctor_agent
+
+          # Built via temp file to keep the YAML clean and stay under ARG_MAX.
+          {
+            echo "System Instructions:"
+            cat "$AGENT_DIR/system_prompt.md"
+            echo ""
+            echo "=== LOG FILTERING RULES ==="
+            cat "$AGENT_DIR/log_filtering_rules.md"
+            echo ""
+            echo "=== OUTPUT TEMPLATE ==="
+            cat "$AGENT_DIR/fix_recommendation_template.md"
+            echo ""
+            echo "Task:"
+            echo "The chart-validate job failed with exit code ${BUILD_EXIT_CODE:-1} on pull request #482. Diagnose the failure and give the engineer a fix. Keep it under 45 lines. No preamble, and do not wrap the whole response in a code fence."
+            echo ""
+            echo "=== INPUT PIPELINE LOG ==="
+            cat ci_run.log
+          } > /tmp/pass1_prompt.txt
+
+          echo "📋 Prompt size: $(wc -c < /tmp/pass1_prompt.txt) bytes"
+          echo "::group::Pass 1 output"
+          claude -p --model "$CLAUDE_MODEL" --output-format text \
+            --tools "" --setting-sources "" \
+            --system-prompt "$AGENT_SYSTEM_PROMPT" \
+            < /tmp/pass1_prompt.txt | tee verdict_log_only.md
+          echo "::endgroup::"
+          python3 scripts/strip_code_fence.py verdict_log_only.md
+          python3 scripts/validate_agent_output.py verdict_log_only.md \
+            --min-bytes 300 --label "pass 1 (log only) diagnosis"
+
+      - name: "Pass 2 - Build Doctor, with repository history (AI Agent)"
+        if: steps.run_build.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -o pipefail
+          AGENT_DIR=agent_instructions/build_doctor_agent
+
+          {
+            echo "System Instructions:"
+            cat "$AGENT_DIR/system_prompt.md"
+            echo ""
+            echo "=== BLAME CORRELATION RULES ==="
+            cat "$AGENT_DIR/blame_correlation_rules.md"
+            echo ""
+            echo "=== OUTPUT TEMPLATE ==="
+            cat "$AGENT_DIR/regression_verdict_template.md"
+            echo ""
+            echo "Task:"
+            echo "Pull request #482 by Priya Nair is red. She bumped an image tag and is asking whether her branch is at fault. Decide, using the evidence pack below, and answer in the verdict template. Every claim must be traceable to a specific line of the log, a specific commit, or the resolved dependency state - do not assert anything the pack does not support. Keep it under 80 lines. No preamble, and do not wrap the whole response in a code fence."
+            echo ""
+            echo "=== EVIDENCE PACK ==="
+            cat context_pack.md
+          } > /tmp/pass2_prompt.txt
+
+          echo "📋 Prompt size: $(wc -c < /tmp/pass2_prompt.txt) bytes"
+          echo "::group::Pass 2 output"
+          claude -p --model "$CLAUDE_MODEL" --output-format text \
+            --tools "" --setting-sources "" \
+            --system-prompt "$AGENT_SYSTEM_PROMPT" \
+            < /tmp/pass2_prompt.txt | tee verdict_with_context.md
+          echo "::endgroup::"
+          python3 scripts/strip_code_fence.py verdict_with_context.md
+          python3 scripts/validate_agent_output.py verdict_with_context.md \
+            --min-bytes 400 --label "pass 2 (with history) verdict"
+
+      - name: Verify the ground truth by re-rendering
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          # Pin the dependency the way the deleted lockfile pinned it. If the
+          # diagnosis holds, the limits come back without touching the PR.
+          rm -rf "$RUNNER_TEMP/repo/$CHART/charts/acme-common"
+          cp -r "$DEMO_DIR/registry/acme-common-2.3.1" \
+                "$RUNNER_TEMP/repo/$CHART/charts/acme-common"
+          cd "$RUNNER_TEMP/repo"
+          helm template payments "$CHART" --namespace payments > rendered.yaml
+          python3 ci/policy_gate.py rendered.yaml | tee "$RUNNER_TEMP/proof.txt"
+
+      - name: Publish the comparison
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          CULPRIT=$(git -C "$RUNNER_TEMP/repo" log -1 \
+            --format='`%h` "%s" - %an, %ad' --date=relative -- "$CHART/Chart.lock")
+
+          {
+            echo "# Demo 3.1: Context-Aware Build Doctor"
+            echo ""
+            echo "The same model, over the same failure, twice. The only difference is"
+            echo "whether it was allowed to see the repository's history."
+            echo ""
+            echo "## Pass 1 - log only (~$(wc -c < /tmp/pass1_prompt.txt) bytes of context)"
+            echo ""
+            cat verdict_log_only.md
+            echo ""
+            echo "## Pass 2 - log + git history + resolved dependencies (~$(wc -c < /tmp/pass2_prompt.txt) bytes)"
+            echo ""
+            cat verdict_with_context.md
+            echo ""
+            echo "## Ground truth (from the fixture, not from the model)"
+            echo ""
+            echo "- **Culprit**: $CULPRIT"
+            echo "- **Mechanism**: deleting \`Chart.lock\` and loosening the range to \`^2.3.0\` let \`acme-common\` resolve to 2.4.0, which moved container settings from \`.Values.resources\` to \`.Values.container.resources\`. Helm renders a missing value as empty and exits 0."
+            echo "- **Files in the pull request**: \`$(git -C "$RUNNER_TEMP/repo" diff --name-only main...feat/bump-payments-1.9.0 | tr '\n' ' ')\`"
+            echo "- **Proof**: pinning 2.3.1 and re-rendering restores the limits — \`$(cat "$RUNNER_TEMP/proof.txt")\` — with the pull request untouched."
+            echo ""
+            echo "<details><summary>📄 Evidence pack handed to pass 2</summary>"
+            echo ""
+            cat context_pack.md
+            echo ""
+            echo "</details>"
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Post PR Verdict Comment
+        uses: actions/github-script@v7
+        if: "steps.run_build.outcome == 'failure' && github.event_name == 'pull_request'"
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('verdict_with_context.md')) return;
+            const withContext = fs.readFileSync('verdict_with_context.md', 'utf8');
+            const logOnly = fs.existsSync('verdict_log_only.md')
+              ? fs.readFileSync('verdict_log_only.md', 'utf8')
+              : '';
+            // The log-only pass is folded away: it is the comparison, not the
+            // answer, and leading with it would bury the verdict.
+            const body = logOnly
+              ? `${withContext}\n\n<details><summary>🔍 What the same model said with the log alone</summary>\n\n${logOnly}\n\n</details>`
+              : withContext;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Conclude Pipeline Failure
+        if: steps.run_build.outcome == 'failure'
+        run: |
+          echo "❌ chart-validate failed as expected. Attribution verdict above."
+          exit 1
