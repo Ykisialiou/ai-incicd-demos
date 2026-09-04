@@ -46,32 +46,73 @@ def text_to_rich_text(text: str) -> list:
         if part.startswith("**") and part.endswith("**") and len(part) >= 4:
             rich_text.append({
                 "type": "text",
-                "text": {"content": part[2:-2]},
+                "text": {"content": part[2:-2][:2000]},
                 "annotations": {"bold": True}
             })
         elif part.startswith("`") and part.endswith("`") and len(part) >= 2:
             rich_text.append({
                 "type": "text",
-                "text": {"content": part[1:-1]},
+                "text": {"content": part[1:-1][:2000]},
                 "annotations": {"code": True}
             })
         elif part.startswith("[") and "](" in part and part.endswith(")"):
             try:
-                link_text = part[1:part.index("](")]
-                link_url = part[part.index("](") + 2:-1]
+                link_text = part[1:part.index("](")][:2000]
+                link_url = part[part.index("](") + 2:-1][:2000]
                 rich_text.append({
                     "type": "text",
                     "text": {"content": link_text, "link": {"url": link_url}}
                 })
             except Exception:
-                rich_text.append({"type": "text", "text": {"content": part}})
+                rich_text.append({"type": "text", "text": {"content": part[:2000]}})
         else:
             rich_text.append({
                 "type": "text",
-                "text": {"content": part}
+                "text": {"content": part[:2000]}
             })
             
-    return rich_text if rich_text else [{"type": "text", "text": {"content": text}}]
+    return rich_text if rich_text else [{"type": "text", "text": {"content": text[:2000]}}]
+
+NOTION_LANGUAGES = {
+    "abap", "abc", "agda", "arduino", "ascii art", "assembly", "bash", "basic", "bnf",
+    "c", "c#", "c++", "clojure", "coffeescript", "coq", "css", "dart", "dhall", "diff",
+    "docker", "ebnf", "elixir", "elm", "erlang", "f#", "flow", "fortran", "gherkin",
+    "glsl", "go", "graphql", "groovy", "haskell", "hcl", "html", "idris", "java",
+    "javascript", "json", "julia", "kotlin", "latex", "less", "lisp", "livescript",
+    "llvm ir", "lua", "makefile", "markdown", "markup", "matlab", "mathematica",
+    "mermaid", "nix", "notion formula", "objective-c", "ocaml", "pascal", "perl",
+    "php", "plain text", "powershell", "prolog", "protobuf", "purescript", "python",
+    "r", "racket", "reason", "ruby", "rust", "sass", "scala", "scheme", "scss",
+    "shell", "smalltalk", "solidity", "sql", "swift", "toml", "typescript", "vb.net",
+    "verilog", "vhdl", "visual basic", "webassembly", "xml", "yaml", "java/c/c++/c#"
+}
+
+LANGUAGE_ALIASES = {
+    "terraform": "hcl",
+    "tf": "hcl",
+    "sh": "bash",
+    "zsh": "bash",
+    "dockerfile": "docker",
+    "js": "javascript",
+    "ts": "typescript",
+    "py": "python",
+    "yml": "yaml",
+    "text": "plain text",
+    "txt": "plain text",
+    "plain_text": "plain text",
+    "plaintext": "plain text",
+    "none": "plain text",
+    "": "plain text"
+}
+
+def normalize_code_language(raw_lang: str) -> str:
+    lang = raw_lang.strip().lower()
+    if lang in LANGUAGE_ALIASES:
+        return LANGUAGE_ALIASES[lang]
+    if lang in NOTION_LANGUAGES:
+        return lang
+    return "plain text"
+
 
 def parse_markdown_to_notion_blocks(markdown_content: str) -> list:
     """Parses full markdown document into clean, beautiful Notion block tree."""
@@ -145,7 +186,7 @@ def parse_markdown_to_notion_blocks(markdown_content: str) -> list:
         # Code block
         if stripped.startswith("```"):
             lang = stripped[3:].strip().lower()
-            code_lang = lang if lang in ["bash", "javascript", "python", "json", "yaml", "html", "css", "dockerfile", "sql"] else "plain_text"
+            code_lang = normalize_code_language(lang)
             code_lines = []
             i += 1
             while i < len(lines) and not lines[i].strip().startswith("```"):
